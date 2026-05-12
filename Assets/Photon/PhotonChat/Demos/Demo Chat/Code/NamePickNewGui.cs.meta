@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: f5e77b98bc3c7be4d838fbfe21004ce3
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 119922
+  packageName: PUN 2 - FREE
+  packageVersion: 2.52
+  assetPath: Assets/Photon/PhotonChat/Demos/Demo Chat/Code/NamePickNewGui.cs
+  uploadId: 817708
