@@ -1,4 +1,4 @@
-## [![Project Status](https://capsule-render.vercel.app/api?type=rect&color=0:00d4ff,100:C724B1&height=40&text=◈%20Project%20Status&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu)
+## [![Project Status](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Project%20Status&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Early_Development-0d0221?style=for-the-badge&logo=unity&logoColor=00d4ff" />
