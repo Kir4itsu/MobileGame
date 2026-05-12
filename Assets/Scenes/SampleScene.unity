@@ -514,6 +514,59 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 2212009239438826721, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
+--- !u!1 &321012001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 321012003}
+  - component: {fileID: 321012002}
+  m_Layer: 0
+  m_Name: MinimapSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &321012002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 321012001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c319eb092bd00749bafb3cca83d4ccc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MinimapSystem
+  mapSize: 150
+  cameraHeight: 30
+  cameraViewSize: 20
+  screenOffset: {x: 20, y: 20}
+  borderColor: {r: 0.2, g: 0.2, b: 0.2, a: 0.9}
+  bgColor: {r: 0, g: 0, b: 0, a: 0.5}
+  borderThickness: 6
+  playerDotColor: {r: 0, g: 0.8, b: 1, a: 1}
+  playerDotSize: 14
+--- !u!4 &321012003
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 321012001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -50.19992, y: 9.09025, z: 92.89032}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!64 &324237889
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -4980,3 +5033,4 @@ SceneRoots:
   - {fileID: 49345194}
   - {fileID: 1196108752}
   - {fileID: 2099855032}
+  - {fileID: 321012003}

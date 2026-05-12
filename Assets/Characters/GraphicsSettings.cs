@@ -113,10 +113,11 @@ public class GraphicsSettings : MonoBehaviour
         GameObject scrollGO = new GameObject("Scroll");
         scrollGO.transform.SetParent(_panel.transform, false);
         RectTransform scrollRT = scrollGO.AddComponent<RectTransform>();
-        scrollRT.anchorMin = new Vector2(0, 0); scrollRT.anchorMax = new Vector2(1, 0);
-        scrollRT.pivot     = new Vector2(0.5f, 1f);
-        scrollRT.anchoredPosition = new Vector2(0, -(headerH + 5f));
-        scrollRT.sizeDelta = new Vector2(-10f, scrollH);
+        scrollRT.anchorMin        = new Vector2(0f, 0f);
+        scrollRT.anchorMax        = new Vector2(1f, 1f);
+        scrollRT.pivot            = new Vector2(0.5f, 0.5f);
+        scrollRT.offsetMin        = new Vector2(5f,  footerH + 5f);
+        scrollRT.offsetMax        = new Vector2(-5f, -(headerH + 5f));
 
         ScrollRect sr = scrollGO.AddComponent<ScrollRect>();
         sr.horizontal = false;
@@ -638,9 +639,21 @@ public class GraphicsSettings : MonoBehaviour
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
         var rt = go.AddComponent<RectTransform>();
-        rt.anchorMin = anchorMin; rt.anchorMax = anchorMax;
-        rt.pivot = new Vector2(0.5f, 1f);
-        rt.anchoredPosition = pos; rt.sizeDelta = size;
+        // Untuk content rows: anchor stretch horizontal, posisi manual vertical
+        if (anchorMin.x == 0f && anchorMax.x == 1f)
+        {
+            rt.anchorMin        = new Vector2(0f, 1f);
+            rt.anchorMax        = new Vector2(1f, 1f);
+            rt.pivot            = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, pos.y);
+            rt.sizeDelta        = new Vector2(0f, Mathf.Abs(size.y));
+        }
+        else
+        {
+            rt.anchorMin = anchorMin; rt.anchorMax = anchorMax;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos; rt.sizeDelta = size;
+        }
         var img = go.AddComponent<Image>(); img.color = color;
         return go;
     }
