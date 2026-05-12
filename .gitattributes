@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 *.png filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
 *.fbx filter=lfs diff=lfs merge=lfs -text
@@ -8,3 +9,6 @@
 *.psd filter=lfs diff=lfs merge=lfs -text
 *.tga filter=lfs diff=lfs merge=lfs -text
 *.hdr filter=lfs diff=lfs merge=lfs -text
+=======
+*.apk filter=lfs diff=lfs merge=lfs -text
+>>>>>>> 81544a19ada3d3938821e384bf9436fa6e4aa621
