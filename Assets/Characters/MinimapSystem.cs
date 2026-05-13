@@ -159,9 +159,27 @@ public class MinimapSystem : MonoBehaviour
         borderImg.sprite  = CreateCircleSprite(256);
         borderGO.transform.SetAsFirstSibling(); // taruh di belakang
 
-        // ── RawImage (output kamera) ──────────────
+        // ── Mask container (lingkaran) ────────────
+        // Mask HARUS di parent terpisah dari RawImage
+        GameObject maskGO = new GameObject("MapMask");
+        maskGO.transform.SetParent(_panelGO.transform, false);
+
+        RectTransform maskRT = maskGO.AddComponent<RectTransform>();
+        maskRT.anchorMin = Vector2.zero;
+        maskRT.anchorMax = Vector2.one;
+        maskRT.offsetMin = Vector2.zero;
+        maskRT.offsetMax = Vector2.zero;
+
+        Image maskImg    = maskGO.AddComponent<Image>();
+        maskImg.sprite   = CreateCircleSprite(256);
+        maskImg.color    = Color.white;
+
+        UnityEngine.UI.Mask mask = maskGO.AddComponent<UnityEngine.UI.Mask>();
+        mask.showMaskGraphic = false; // sembunyikan sprite mask-nya
+
+        // ── RawImage di dalam Mask ────────────────
         GameObject rawGO = new GameObject("MapView");
-        rawGO.transform.SetParent(_panelGO.transform, false);
+        rawGO.transform.SetParent(maskGO.transform, false); // parent ke maskGO, bukan _panelGO!
 
         RectTransform rawRT = rawGO.AddComponent<RectTransform>();
         rawRT.anchorMin = Vector2.zero;
@@ -171,14 +189,6 @@ public class MinimapSystem : MonoBehaviour
 
         _mapImage         = rawGO.AddComponent<RawImage>();
         _mapImage.texture = _renderTex;
-
-        // Mask bulat supaya RawImage ikut bentuk lingkaran
-        rawGO.AddComponent<UnityEngine.UI.Mask>();
-        Image maskImg   = rawGO.GetComponent<Image>();
-        if (maskImg == null) maskImg = rawGO.AddComponent<Image>();
-        maskImg.sprite  = CreateCircleSprite(256);
-        maskImg.color   = Color.white;
-        rawGO.GetComponent<UnityEngine.UI.Mask>().showMaskGraphic = false;
 
         // ── Player dot (titik biru di tengah) ─────
         _playerDot = new GameObject("PlayerDot");
@@ -280,14 +290,14 @@ public class MinimapSystem : MonoBehaviour
     // ──────────────────────────────────────────────
     void LateUpdate()
     {
-        if (_minimapCam == null) return;
+        if (_minimapCam == null || _renderTex == null) return;
 
         // Retry cari player kalau belum ketemu
         if (_playerTransform == null)
         {
             GameObject p = GameObject.FindGameObjectWithTag("Player");
             if (p != null) _playerTransform = p.transform;
-            return;
+            else return; // belum ada player, skip
         }
 
         // Kamera follow player dari atas, rotasi fixed (utara = Z+)

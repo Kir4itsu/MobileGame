@@ -8,52 +8,59 @@ public class GraphicsSettings : MonoBehaviour
     public static GraphicsSettings Instance { get; private set; }
 
     private UniversalRenderPipelineAsset _urpAsset;
-    private Volume      _ppVolume;
-    private Bloom       _bloom;
-    private DepthOfField _dof;
+    private Bloom            _bloom;
+    private DepthOfField     _dof;
     private ColorAdjustments _colorAdj;
 
-    // ── Values ────────────────────────────────────
-    private float _renderScale   = 0.75f;
-    private int   _targetFPS     = 30;
-    private int   _shadowQuality = 1;   // 0=Off 1=VeryLow 2=Low 3=Med 4=High 5=VeryHigh
-    private float _shadowDist    = 40f;
-    private int   _textureQuality= 1;   // 0=Low 1=Med 2=High 3=Ultra
-    private bool  _bloomOn       = false;
-    private float _bloomIntensity= 0.3f;
-    private bool  _dofOn         = false;
-    private int   _antiAliasing  = 1;   // 0=Off 1=FXAA 2=SMAA
-    private float _brightness    = 1f;
+    // Values
+    private float _renderScale    = 0.75f;
+    private int   _targetFPS      = 30;
+    private int   _shadowQuality  = 1;
+    private float _shadowDist     = 40f;
+    private int   _textureQuality = 1;
+    private bool  _bloomOn        = false;
+    private float _bloomIntensity = 0.3f;
+    private bool  _dofOn          = false;
+    private int   _antiAliasing   = 1;
+    private float _brightness     = 1f;
 
-    // ── UI ────────────────────────────────────────
-    private GameObject    _panel;
-    private Canvas        _canvas;
-    private RectTransform _scrollContent;
-    private float         _rowY = 0f;
-
-    // Label refs
-    private Text _tRenderScale, _tFPS, _tShadow, _tShadowDist;
-    private Text _tTexture, _tBloom, _tBloomInt, _tDOF, _tAA, _tBrightness;
+    // UI
+    private GameObject _panel;
+    private Transform  _lastParent; // simpan parent terakhir untuk rebuild
 
     // Colors
-    static readonly Color C_BG      = new Color(0.10f, 0.10f, 0.13f, 0.98f);
-    static readonly Color C_ROW_A   = new Color(0.15f, 0.15f, 0.18f, 1f);
-    static readonly Color C_ROW_B   = new Color(0.12f, 0.12f, 0.15f, 1f);
-    static readonly Color C_SECTION = new Color(0.08f, 0.25f, 0.45f, 1f);
-    static readonly Color C_BLUE    = new Color(0.20f, 0.50f, 1.00f, 1f);
-    static readonly Color C_GREEN   = new Color(0.10f, 0.72f, 0.30f, 1f);
-    static readonly Color C_RED     = new Color(0.85f, 0.20f, 0.20f, 1f);
-    static readonly Color C_ORANGE  = new Color(1.00f, 0.55f, 0.10f, 1f);
-    static readonly Color C_GRAY    = new Color(0.35f, 0.35f, 0.40f, 1f);
-    static readonly Color C_PURPLE  = new Color(0.50f, 0.15f, 0.75f, 1f);
-    static readonly Color C_VALUE   = new Color(0.40f, 0.85f, 1.00f, 1f);
-    static readonly Color C_DESC    = new Color(0.60f, 0.60f, 0.65f, 1f);
-    static readonly Color C_WARN    = new Color(1.00f, 0.70f, 0.10f, 1f);
+    static readonly Color C_BG    = new Color(0.10f, 0.10f, 0.13f, 0.98f);
+    static readonly Color C_HEAD  = new Color(0.10f, 0.30f, 0.60f, 1.00f);
+    static readonly Color C_SECA  = new Color(0.08f, 0.20f, 0.35f, 1.00f);
+    static readonly Color C_SECB  = new Color(0.15f, 0.10f, 0.25f, 1.00f);
+    static readonly Color C_SECC  = new Color(0.05f, 0.22f, 0.12f, 1.00f);
+    static readonly Color C_SECD  = new Color(0.25f, 0.12f, 0.05f, 1.00f);
+    static readonly Color C_SECE  = new Color(0.20f, 0.08f, 0.28f, 1.00f);
+    static readonly Color C_ROWA  = new Color(0.14f, 0.14f, 0.17f, 1.00f);
+    static readonly Color C_ROWB  = new Color(0.11f, 0.11f, 0.14f, 1.00f);
+    static readonly Color C_BLUE  = new Color(0.20f, 0.50f, 1.00f, 1.00f);
+    static readonly Color C_GREEN = new Color(0.10f, 0.72f, 0.30f, 1.00f);
+    static readonly Color C_RED   = new Color(0.85f, 0.20f, 0.20f, 1.00f);
+    static readonly Color C_ORG   = new Color(1.00f, 0.55f, 0.10f, 1.00f);
+    static readonly Color C_GRAY  = new Color(0.35f, 0.35f, 0.40f, 1.00f);
+    static readonly Color C_PUR   = new Color(0.50f, 0.15f, 0.75f, 1.00f);
+    static readonly Color C_VAL   = new Color(0.40f, 0.85f, 1.00f, 1.00f);
+    static readonly Color C_DESC  = new Color(0.55f, 0.55f, 0.60f, 1.00f);
+    static readonly Color C_WARN  = new Color(1.00f, 0.70f, 0.10f, 1.00f);
 
-    const float PANEL_W = 500f;
-    const float PANEL_H = 600f;
-    const float ROW_H   = 82f;
-    const float SEC_H   = 38f;
+    // Layout constants
+    const float W       = 520f;
+    const float PAD     = 12f;
+    const float ROW_H   = 78f;
+    const float SEC_H   = 34f;
+    const float PREV_H  = 76f;
+    const float FOOT_H  = 62f;
+    const float HEAD_H  = 52f;
+
+    // Y cursor
+    float _y;
+    Transform _body;
+    int _rowIdx = 0;
 
     // ──────────────────────────────────────────────
     void Awake()
@@ -86,350 +93,313 @@ public class GraphicsSettings : MonoBehaviour
     // ──────────────────────────────────────────────
     public void BuildPanel(Transform parent)
     {
-        if (_panel != null) return;
-        _canvas = parent.GetComponentInParent<Canvas>();
+        // FIX: Selalu destroy panel lama sebelum rebuild.
+        // Sebelumnya pakai "if (_panel != null) return" yang menyebabkan
+        // panel tidak muncul setelah pertama kali di-Hide() lalu Show() lagi
+        // ketika parent canvas berubah atau orphan karena DontDestroyOnLoad.
+        if (_panel != null)
+        {
+            Destroy(_panel);
+            _panel = null;
+        }
+
+        _lastParent = parent;
+
+        // Hitung total tinggi konten
+        float contentH = HEAD_H
+            + SEC_H + PREV_H                      // Preset
+            + SEC_H + ROW_H + ROW_H               // Performa
+            + SEC_H + ROW_H                       // Texture
+            + SEC_H + ROW_H + ROW_H               // Shadow
+            + SEC_H + ROW_H + (_bloom!=null ? ROW_H+ROW_H : 0)
+                    + (_dof!=null ? ROW_H : 0) + ROW_H  // PostFX
+            + FOOT_H + PAD * 2f;
+
+        float panelH = Mathf.Min(contentH, 620f);
 
         // ── Panel utama ───────────────────────────
-        _panel = MakeImage("GraphicsPanel", parent,
-            Vector2.zero, new Vector2(PANEL_W, PANEL_H),
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), C_BG);
-        MakeRoundedImage(_panel.GetComponent<Image>(), 20);
+        _panel = NewGO("GfxPanel", parent);
+        var panelRT = RT(_panel);
+        panelRT.anchorMin = panelRT.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRT.pivot     = new Vector2(0.5f, 0.5f);
+        panelRT.sizeDelta = new Vector2(W, panelH);
+        panelRT.anchoredPosition = Vector2.zero;
+        Img(_panel, C_BG, RoundSprite(18));
 
-        // Header
-        float headerH = 55f;
-        MakeRect("Header", _panel.transform,
-            new Vector2(0, -headerH * 0.5f), new Vector2(PANEL_W, headerH),
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), C_SECTION);
-        MakeText(_panel.transform, "🎮  Graphics Settings",
-            new Vector2(0, -headerH * 0.5f), new Vector2(PANEL_W - 20f, headerH),
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            22, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        // ── Header ───────────────────────────────
+        var hdr = NewGO("Header", _panel.transform);
+        var hdrRT = RT(hdr);
+        hdrRT.anchorMin = new Vector2(0,1); hdrRT.anchorMax = new Vector2(1,1);
+        hdrRT.pivot     = new Vector2(0.5f,1);
+        hdrRT.anchoredPosition = Vector2.zero;
+        hdrRT.sizeDelta = new Vector2(0, HEAD_H);
+        Img(hdr, C_HEAD, RoundSprite(18));
+        Txt(hdr.transform, "🎮  Graphics Settings", 0, -HEAD_H/2f, W-20f, HEAD_H,
+            20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
 
-        // ── Scroll area ───────────────────────────
-        float footerH = 60f;
-        float scrollTop = -(headerH + 5f);
-        float scrollH   = PANEL_H - headerH - footerH - 10f;
+        // ── ScrollView ────────────────────────────
+        var sv = NewGO("ScrollView", _panel.transform);
+        var svRT = RT(sv);
+        svRT.anchorMin = new Vector2(0,0); svRT.anchorMax = new Vector2(1,1);
+        svRT.offsetMin = new Vector2(0, FOOT_H);
+        svRT.offsetMax = new Vector2(0, -HEAD_H);
 
-        GameObject scrollGO = new GameObject("Scroll");
-        scrollGO.transform.SetParent(_panel.transform, false);
-        RectTransform scrollRT = scrollGO.AddComponent<RectTransform>();
-        scrollRT.anchorMin        = new Vector2(0f, 0f);
-        scrollRT.anchorMax        = new Vector2(1f, 1f);
-        scrollRT.pivot            = new Vector2(0.5f, 0.5f);
-        scrollRT.offsetMin        = new Vector2(5f,  footerH + 5f);
-        scrollRT.offsetMax        = new Vector2(-5f, -(headerH + 5f));
-
-        ScrollRect sr = scrollGO.AddComponent<ScrollRect>();
+        var sr = sv.AddComponent<ScrollRect>();
         sr.horizontal = false;
+        sr.scrollSensitivity = 30f;
 
-        // Viewport
-        GameObject vpGO = new GameObject("VP");
-        vpGO.transform.SetParent(scrollGO.transform, false);
-        RectTransform vpRT = vpGO.AddComponent<RectTransform>();
+        // Viewport — pakai RectMask2D, lebih reliable dari Mask+Image
+        var vp = NewGO("VP", sv.transform);
+        var vpRT = RT(vp);
         vpRT.anchorMin = Vector2.zero; vpRT.anchorMax = Vector2.one;
         vpRT.offsetMin = Vector2.zero; vpRT.offsetMax = Vector2.zero;
-        Image vpImg = vpGO.AddComponent<Image>(); vpImg.color = Color.clear;
-        Mask msk = vpGO.AddComponent<Mask>(); msk.showMaskGraphic = false;
+        // FIX: RectMask2D tidak butuh Image, tidak ada masalah color.clear
+        vp.AddComponent<RectMask2D>();
         sr.viewport = vpRT;
 
         // Content
-        GameObject ctGO = new GameObject("Content");
-        ctGO.transform.SetParent(vpGO.transform, false);
-        _scrollContent = ctGO.AddComponent<RectTransform>();
-        _scrollContent.anchorMin = new Vector2(0, 1);
-        _scrollContent.anchorMax = new Vector2(1, 1);
-        _scrollContent.pivot     = new Vector2(0.5f, 1f);
-        _scrollContent.anchoredPosition = Vector2.zero;
-        _scrollContent.sizeDelta = Vector2.zero;
-        sr.content = _scrollContent;
-
-        // ── Isi rows ──────────────────────────────
-        _rowY = 0f;
-        BuildRows();
-
-        // Set tinggi content
-        _scrollContent.sizeDelta = new Vector2(0, Mathf.Abs(_rowY) + 10f);
+        var ct = NewGO("Content", vp.transform);
+        var ctRT = RT(ct);
+        ctRT.anchorMin = new Vector2(0,1);
+        ctRT.anchorMax = new Vector2(1,1);
+        ctRT.pivot     = new Vector2(0.5f,1);
+        ctRT.anchoredPosition = Vector2.zero;
+        ctRT.sizeDelta = new Vector2(0, contentH);
+        sr.content = ctRT;
+        _body = ct.transform;
 
         // ── Footer ────────────────────────────────
-        BuildFooter(footerH);
+        var foot = NewGO("Footer", _panel.transform);
+        var footRT = RT(foot);
+        footRT.anchorMin = new Vector2(0,0); footRT.anchorMax = new Vector2(1,0);
+        footRT.pivot     = new Vector2(0.5f,0);
+        footRT.anchoredPosition = Vector2.zero;
+        footRT.sizeDelta = new Vector2(0, FOOT_H);
+        Img(foot, new Color(0.08f,0.08f,0.10f,1f), null);
 
+        Btn(foot.transform, "💾  Simpan & Tutup",
+            -105f, 0f, 210f, 46f, C_BLUE,
+            () => { SaveSettings(); SettingsMenu.Instance?.CloseGraphics(); });
+        Btn(foot.transform, "↺  Reset",
+            120f, 0f, 130f, 46f, C_RED,
+            ResetToDefault);
+
+        // ── Isi konten ────────────────────────────
+        _y = 0f; _rowIdx = 0;
+        BuildContent();
+
+        // Update tinggi content agar scroll benar
+        var ctRTref = _body.GetComponent<RectTransform>();
+        if (ctRTref != null)
+            ctRTref.sizeDelta = new Vector2(0, Mathf.Abs(_y) + 20f);
+
+        // FIX: Panel langsung aktif setelah build, Show() yang akan handle visibilitas
         _panel.SetActive(false);
     }
 
-    void BuildRows()
+    // ──────────────────────────────────────────────
+    //  BUILD CONTENT
+    // ──────────────────────────────────────────────
+    void BuildContent()
     {
         // ═══ PRESET ═══════════════════════════════
-        AddSection("⚡  PRESET KUALITAS", C_SECTION);
-        AddPresetRow();
+        Section("⚡  PRESET KUALITAS", C_SECA);
+        PresetRow();
 
         // ═══ PERFORMA ═════════════════════════════
-        AddSection("📊  PERFORMA", new Color(0.1f, 0.3f, 0.1f, 1f));
-
-        AddCycleRow("Render Scale",
-            "Resolusi render — lebih rendah lebih cepat tapi gambar blur",
-            new[]{"50% (Fastest)","65% (Fast)","75% (Balanced)","90% (Quality)","100% (Ultra)"},
-            new[]{C_RED, C_ORANGE, C_BLUE, C_GREEN, C_PURPLE},
-            RenderScaleIndex(),
-            ref _tRenderScale,
-            i => { _renderScale = new[]{0.5f,0.65f,0.75f,0.9f,1.0f}[i]; ApplyRenderScale(); },
-            warn: i => i == 0 ? "⚠ Gambar akan terlihat sangat blur" : "");
-
-        AddCycleRow("Target FPS",
-            "Batas frame rate — lebih rendah lebih hemat baterai",
+        Section("📊  PERFORMA", C_SECC);
+        CycleRow("Render Scale",
+            "Resolusi render — rendah = cepat tapi blur",
+            new[]{"50% Fastest","65% Fast","75% Balanced","90% Quality","100% Ultra"},
+            new[]{C_RED,C_ORG,C_BLUE,C_GREEN,C_PUR},
+            RsIdx(), i => { _renderScale=new[]{0.5f,0.65f,0.75f,0.9f,1f}[i]; ApplyRenderScale(); },
+            warn: i => i==0?"⚠ Gambar akan blur":"");
+        CycleRow("Target FPS",
+            "Batas frame rate — rendah = hemat baterai",
             new[]{"30 FPS","60 FPS","90 FPS","120 FPS"},
-            new[]{C_GREEN, C_BLUE, C_ORANGE, C_RED},
-            FPSIndex(),
-            ref _tFPS,
-            i => { _targetFPS = new[]{30,60,90,120}[i]; ApplyFPS(); });
+            new[]{C_GREEN,C_BLUE,C_ORG,C_RED},
+            FpsIdx(), i => { _targetFPS=new[]{30,60,90,120}[i]; ApplyFPS(); });
 
         // ═══ TEXTURE ══════════════════════════════
-        AddSection("🖼  TEXTURE", new Color(0.3f, 0.15f, 0.05f, 1f));
-
-        AddCycleRow("Kualitas Texture",
-            "Resolusi texture — Low hemat VRAM, Ultra tampilan terbaik",
+        Section("🖼  TEXTURE", C_SECD);
+        CycleRow("Kualitas Texture",
+            "Resolusi texture — Low hemat VRAM, Ultra terbaik",
             new[]{"Low","Medium","High","Ultra"},
-            new[]{C_RED, C_ORANGE, C_BLUE, C_PURPLE},
-            _textureQuality,
-            ref _tTexture,
-            i => { _textureQuality = i; ApplyTexture(); });
+            new[]{C_RED,C_ORG,C_BLUE,C_PUR},
+            _textureQuality, i => { _textureQuality=i; ApplyTexture(); });
 
         // ═══ BAYANGAN ═════════════════════════════
-        AddSection("🌑  BAYANGAN", new Color(0.1f, 0.1f, 0.3f, 1f));
-
-        AddCycleRow("Kualitas Shadow",
-            "Ketajaman bayangan — Off paling ringan, Very High paling berat",
+        Section("🌑  BAYANGAN", C_SECB);
+        CycleRow("Kualitas Shadow",
+            "Ketajaman bayangan — Off paling ringan",
             new[]{"Off","Very Low","Low","Medium","High","Very High"},
-            new[]{C_GRAY, C_RED, C_ORANGE, C_BLUE, C_GREEN, C_PURPLE},
-            _shadowQuality,
-            ref _tShadow,
-            i => { _shadowQuality = i; ApplyShadow(); });
-
-        AddCycleRow("Jarak Shadow",
-            "Seberapa jauh bayangan dirender — lebih dekat lebih hemat",
-            new[]{"20m (Near)","40m (Low)","70m (Med)","100m (Far)","150m (Max)"},
-            new[]{C_RED, C_ORANGE, C_BLUE, C_GREEN, C_PURPLE},
-            ShadowDistIndex(),
-            ref _tShadowDist,
-            i => { _shadowDist = new[]{20f,40f,70f,100f,150f}[i]; ApplyShadowDist(); },
-            enabled: _shadowQuality > 0);
+            new[]{C_GRAY,C_RED,C_ORG,C_BLUE,C_GREEN,C_PUR},
+            _shadowQuality, i => { _shadowQuality=i; ApplyShadow(); });
+        CycleRow("Jarak Shadow",
+            "Seberapa jauh bayangan dirender",
+            new[]{"20m Near","40m Low","70m Med","100m Far","150m Max"},
+            new[]{C_RED,C_ORG,C_BLUE,C_GREEN,C_PUR},
+            SdIdx(), i => { _shadowDist=new[]{20f,40f,70f,100f,150f}[i]; ApplyShadowDist(); });
 
         // ═══ POST PROCESSING ══════════════════════
-        AddSection("✨  POST PROCESSING", new Color(0.25f, 0.1f, 0.3f, 1f));
-
-        AddCycleRow("Anti-Aliasing",
-            "Haluskan tepi bergerigi — FXAA ringan, SMAA lebih halus",
+        Section("✨  POST PROCESSING", C_SECE);
+        CycleRow("Anti-Aliasing",
+            "Haluskan tepi bergerigi",
             new[]{"Off","FXAA","SMAA"},
-            new[]{C_GRAY, C_BLUE, C_PURPLE},
-            _antiAliasing,
-            ref _tAA,
-            i => { _antiAliasing = i; ApplyAA(); });
+            new[]{C_GRAY,C_BLUE,C_PUR},
+            _antiAliasing, i => { _antiAliasing=i; ApplyAA(); });
 
         if (_bloom != null)
         {
-            AddToggleRow("Bloom",
-                "Efek cahaya menyebar di area terang — matikan untuk performa",
-                _bloomOn, ref _tBloom,
-                v => { _bloomOn = v; ApplyBloom(); });
-
-            AddCycleRow("Bloom Intensity",
+            ToggleRow("Bloom",
+                "Efek cahaya menyebar di area terang",
+                _bloomOn, v => { _bloomOn=v; ApplyBloom(); });
+            CycleRow("Bloom Intensity",
                 "Kekuatan efek bloom",
-                new[]{"0.2x (Subtle)","0.4x (Low)","0.6x (Med)","0.8x (High)","1.0x (Max)"},
-                new[]{C_GRAY, C_BLUE, C_BLUE, C_ORANGE, C_RED},
-                BloomIntIndex(),
-                ref _tBloomInt,
-                i => { _bloomIntensity = new[]{0.2f,0.4f,0.6f,0.8f,1.0f}[i]; ApplyBloom(); },
-                enabled: _bloomOn);
+                new[]{"0.2x Subtle","0.4x Low","0.6x Med","0.8x High","1.0x Max"},
+                new[]{C_GRAY,C_BLUE,C_BLUE,C_ORG,C_RED},
+                BiIdx(), i => { _bloomIntensity=new[]{0.2f,0.4f,0.6f,0.8f,1f}[i]; ApplyBloom(); });
         }
 
         if (_dof != null)
-        {
-            AddToggleRow("Depth of Field",
-                "Blur objek jauh — efek sinematik tapi berat di mobile",
-                _dofOn, ref _tDOF,
-                v => { _dofOn = v; ApplyDOF(); });
-        }
+            ToggleRow("Depth of Field",
+                "Blur objek jauh — sinematik tapi berat",
+                _dofOn, v => { _dofOn=v; ApplyDOF(); });
 
-        AddCycleRow("Kecerahan",
-            "Terang/gelap keseluruhan gambar",
-            new[]{"60%","80%","100% (Default)","120%","140%"},
-            new[]{C_GRAY, C_BLUE, C_GREEN, C_ORANGE, C_RED},
-            BrightnessIndex(),
-            ref _tBrightness,
-            i => { _brightness = new[]{0.6f,0.8f,1.0f,1.2f,1.4f}[i]; ApplyBrightness(); });
-    }
-
-    void BuildFooter(float footerH)
-    {
-        GameObject footer = MakeImage("Footer", _panel.transform,
-            new Vector2(0, footerH * 0.5f), new Vector2(PANEL_W, footerH),
-            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-            new Color(0.08f, 0.08f, 0.10f, 1f));
-
-        // Simpan & Tutup
-        MakeButton(footer.transform, "💾  Simpan & Tutup",
-            new Vector2(-90f, 0f), new Vector2(200f, 44f),
-            new Vector2(0.5f, 0.5f), C_BLUE,
-            () => { SaveSettings(); SettingsMenu.Instance?.CloseGraphics(); });
-
-        // Reset
-        MakeButton(footer.transform, "↺  Reset",
-            new Vector2(105f, 0f), new Vector2(130f, 44f),
-            new Vector2(0.5f, 0.5f), C_RED,
-            ResetToDefault);
+        CycleRow("Kecerahan",
+            "Atur terang/gelap keseluruhan gambar",
+            new[]{"60%","80%","100% Default","120%","140%"},
+            new[]{C_GRAY,C_BLUE,C_GREEN,C_ORG,C_RED},
+            BrIdx(), i => { _brightness=new[]{0.6f,0.8f,1f,1.2f,1.4f}[i]; ApplyBrightness(); });
     }
 
     // ──────────────────────────────────────────────
-    //  ROW BUILDERS
+    //  ROW HELPERS
     // ──────────────────────────────────────────────
-
-    void AddSection(string title, Color color)
+    void Section(string title, Color col)
     {
-        GameObject go = MakeRect("Sec", _scrollContent,
-            new Vector2(0, _rowY), new Vector2(0, SEC_H),
-            new Vector2(0, 1f), new Vector2(1f, 1f), color);
-        MakeText(go.transform, title,
-            Vector2.zero, Vector2.zero,
-            Vector2.zero, Vector2.one,
-            15, FontStyle.Bold, new Color(0.85f, 0.95f, 1f, 1f),
+        var go = NewGO("Sec", _body);
+        var rt = RT(go);
+        rt.anchorMin = new Vector2(0,1); rt.anchorMax = new Vector2(1,1);
+        rt.pivot = new Vector2(0.5f,1);
+        rt.anchoredPosition = new Vector2(0, _y);
+        rt.sizeDelta = new Vector2(0, SEC_H);
+        Img(go, col, null);
+        Txt(go.transform, title, 0, 0, 0, 0,
+            14, FontStyle.Bold, new Color(0.85f,0.95f,1f,1f),
             TextAnchor.MiddleCenter, stretch: true);
-        _rowY -= SEC_H + 2f;
+        _y -= SEC_H;
     }
 
-    void AddPresetRow()
+    void PresetRow()
     {
-        GameObject go = MakeRect("Presets", _scrollContent,
-            new Vector2(0, _rowY), new Vector2(0, 70f),
-            new Vector2(0, 1f), new Vector2(1f, 1f),
-            new Color(0.13f, 0.13f, 0.16f, 1f));
-        _rowY -= 72f;
-
-        string[] labels = {"🥔\nPotato","🔋\nLow","⚖\nMed","🔥\nHigh","💎\nUltra"};
-        Color[]  colors = {C_GRAY, C_GREEN, C_BLUE, C_ORANGE, C_PURPLE};
-        float    w      = 82f;
-        float    startX = -(w * 2f + 8f * 2f);
-
+        var go = RowBG(PREV_H);
+        string[] lbl = {"🥔\nPotato","🔋\nLow","⚖\nMed","🔥\nHigh","💎\nUltra"};
+        Color[]  col = {C_GRAY,C_GREEN,C_BLUE,C_ORG,C_PUR};
+        float bw = 80f, gap = 8f;
+        float start = -(bw*2 + gap*2);
         for (int i = 0; i < 5; i++)
         {
             int idx = i;
-            MakeButton(go.transform, labels[i],
-                new Vector2(startX + i * (w + 8f), 0f),
-                new Vector2(w, 58f), new Vector2(0.5f, 0.5f),
-                colors[i], () => ApplyPreset(idx), 12);
+            Btn(go.transform, lbl[i],
+                start + i*(bw+gap), 4f,
+                bw, 60f, col[i],
+                () => ApplyPreset(idx), 12);
         }
     }
 
-    int _rowCount = 0;
-    void AddCycleRow(string title, string desc,
-                     string[] options, Color[] colors,
-                     int currentIdx, ref Text labelRef,
-                     System.Action<int> onChange,
-                     System.Func<int,string> warn = null,
-                     bool enabled = true)
+    void CycleRow(string title, string desc,
+                  string[] opts, Color[] cols, int cur,
+                  System.Action<int> onChange,
+                  System.Func<int,string> warn = null)
     {
-        Color rowBg = (_rowCount++ % 2 == 0) ? C_ROW_A : C_ROW_B;
-        GameObject go = MakeRect("Row_"+title, _scrollContent,
-            new Vector2(0, _rowY), new Vector2(0, ROW_H),
-            new Vector2(0, 1f), new Vector2(1f, 1f), rowBg);
-        _rowY -= ROW_H + 2f;
+        var go = RowBG(ROW_H);
+        cur = Mathf.Clamp(cur, 0, opts.Length-1);
+        int idx = cur;
 
-        // Kiri: judul + desc
-        MakeText(go.transform, title,
-            new Vector2(10f, 14f), new Vector2(220f, 26f),
-            new Vector2(0f, 1f), new Vector2(0f, 1f),
-            15, FontStyle.Bold, enabled ? Color.white : C_GRAY, TextAnchor.MiddleLeft);
-        MakeText(go.transform, desc,
-            new Vector2(10f, -10f), new Vector2(220f, 22f),
-            new Vector2(0f, 1f), new Vector2(0f, 1f),
-            11, FontStyle.Normal, C_DESC, TextAnchor.UpperLeft);
+        Txt(go.transform, title, -(W/2f)+PAD*2, -14f, W*0.55f, 26f,
+            15, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
+        Txt(go.transform, desc, -(W/2f)+PAD*2, -38f, W*0.55f, 20f,
+            11, FontStyle.Normal, C_DESC, TextAnchor.MiddleLeft);
 
-        // Kanan: value label + tombol < >
-        int idx = Mathf.Clamp(currentIdx, 0, options.Length - 1);
+        var badge = NewGO("Badge", go.transform);
+        var bRT = RT(badge);
+        bRT.anchorMin = bRT.anchorMax = new Vector2(1f,0.5f);
+        bRT.pivot = new Vector2(1f,0.5f);
+        bRT.anchoredPosition = new Vector2(-50f, 8f);
+        bRT.sizeDelta = new Vector2(155f, 30f);
+        Img(badge, new Color(0,0,0,0.35f), RoundSprite(6));
+        var valTxt = TxtComp(badge.transform, opts[idx], 13, FontStyle.Bold,
+            cols[idx], TextAnchor.MiddleCenter, stretch:true);
 
-        // Value label
-        GameObject valGO = MakeRect("Val", go.transform,
-            new Vector2(-10f, 10f), new Vector2(160f, 32f),
-            new Vector2(1f, 1f), new Vector2(1f, 1f),
-            new Color(0f, 0f, 0f, 0.3f));
-        MakeRoundedRect(valGO, 6);
-        Text valTxt = MakeTextComp(valGO.transform, options[idx],
-            14, FontStyle.Bold, enabled ? colors[idx] : C_GRAY, TextAnchor.MiddleCenter);
-        labelRef = valTxt;
-
-        // Warn text
-        Text warnTxt = MakeTextComp(go.transform,
-            warn != null ? warn(idx) : "",
+        var warnTxt = TxtComp(go.transform, warn!=null?warn(idx):"",
             10, FontStyle.Italic, C_WARN, TextAnchor.MiddleCenter);
-        RectTransform warnRT = warnTxt.GetComponent<RectTransform>();
-        warnRT.anchorMin = new Vector2(0f, 0f); warnRT.anchorMax = new Vector2(1f, 0f);
-        warnRT.pivot = new Vector2(0.5f, 0f);
-        warnRT.anchoredPosition = new Vector2(0f, 4f);
-        warnRT.sizeDelta = new Vector2(-20f, 18f);
+        var wRT = RT(warnTxt.gameObject);
+        wRT.anchorMin = new Vector2(0,0); wRT.anchorMax = new Vector2(1,0);
+        wRT.pivot = new Vector2(0.5f,0);
+        wRT.anchoredPosition = new Vector2(0,3f);
+        wRT.sizeDelta = new Vector2(-20f,16f);
 
-        if (!enabled) return;
-
-        // Tombol <
-        MakeButton(go.transform, "◀",
-            new Vector2(-168f, -8f), new Vector2(32f, 32f),
-            new Vector2(1f, 1f), new Color(0.2f,0.2f,0.25f,1f),
-            () => {
-                idx = (idx - 1 + options.Length) % options.Length;
-                valTxt.text  = options[idx];
-                valTxt.color = colors[idx];
-                if (warnTxt != null) warnTxt.text = warn != null ? warn(idx) : "";
+        Btn(go.transform, "◀", W/2f-88f, 8f, 34f, 34f,
+            new Color(0.2f,0.2f,0.28f,1f), () => {
+                idx = (idx-1+opts.Length)%opts.Length;
+                valTxt.text = opts[idx]; valTxt.color = cols[idx];
+                if (warnTxt) warnTxt.text = warn!=null?warn(idx):"";
                 onChange(idx);
-            }, 16);
-
-        // Tombol >
-        MakeButton(go.transform, "▶",
-            new Vector2(-10f, -8f), new Vector2(32f, 32f),
-            new Vector2(1f, 1f), new Color(0.2f,0.2f,0.25f,1f),
-            () => {
-                idx = (idx + 1) % options.Length;
-                valTxt.text  = options[idx];
-                valTxt.color = colors[idx];
-                if (warnTxt != null) warnTxt.text = warn != null ? warn(idx) : "";
+            }, 18);
+        Btn(go.transform, "▶", W/2f-46f, 8f, 34f, 34f,
+            new Color(0.2f,0.2f,0.28f,1f), () => {
+                idx = (idx+1)%opts.Length;
+                valTxt.text = opts[idx]; valTxt.color = cols[idx];
+                if (warnTxt) warnTxt.text = warn!=null?warn(idx):"";
                 onChange(idx);
-            }, 16);
+            }, 18);
     }
 
-    void AddToggleRow(string title, string desc, bool current,
-                      ref Text labelRef, System.Action<bool> onChange)
+    void ToggleRow(string title, string desc, bool cur, System.Action<bool> onChange)
     {
-        Color rowBg = (_rowCount++ % 2 == 0) ? C_ROW_A : C_ROW_B;
-        GameObject go = MakeRect("Row_"+title, _scrollContent,
-            new Vector2(0, _rowY), new Vector2(0, ROW_H),
-            new Vector2(0, 1f), new Vector2(1f, 1f), rowBg);
-        _rowY -= ROW_H + 2f;
+        var go = RowBG(ROW_H);
+        bool state = cur;
 
-        MakeText(go.transform, title,
-            new Vector2(10f, 14f), new Vector2(260f, 26f),
-            new Vector2(0f, 1f), new Vector2(0f, 1f),
+        Txt(go.transform, title, -(W/2f)+PAD*2, -14f, W*0.6f, 26f,
             15, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
-        MakeText(go.transform, desc,
-            new Vector2(10f, -10f), new Vector2(260f, 22f),
-            new Vector2(0f, 1f), new Vector2(0f, 1f),
-            11, FontStyle.Normal, C_DESC, TextAnchor.UpperLeft);
+        Txt(go.transform, desc, -(W/2f)+PAD*2, -38f, W*0.6f, 20f,
+            11, FontStyle.Normal, C_DESC, TextAnchor.MiddleLeft);
 
-        bool state = current;
-        GameObject btnGO = MakeRect("Toggle", go.transform,
-            new Vector2(-10f, 0f), new Vector2(100f, 38f),
-            new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-            state ? C_GREEN : C_GRAY);
-        MakeRoundedRect(btnGO, 8);
+        var tog = NewGO("Tog", go.transform);
+        var tRT = RT(tog);
+        tRT.anchorMin = tRT.anchorMax = new Vector2(1f,0.5f);
+        tRT.pivot = new Vector2(1f,0.5f);
+        tRT.anchoredPosition = new Vector2(-PAD*2, 8f);
+        tRT.sizeDelta = new Vector2(100f,38f);
+        var togImg = tog.AddComponent<Image>();
+        togImg.color  = state ? C_GREEN : C_GRAY;
+        togImg.sprite = RoundSprite(10);
 
-        Text lbl = MakeTextComp(btnGO.transform,
-            state ? "✔ ON" : "✘ OFF",
-            15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        labelRef = lbl;
+        var lbl = TxtComp(tog.transform,
+            state?"✔  ON":"✘  OFF", 14, FontStyle.Bold,
+            Color.white, TextAnchor.MiddleCenter, stretch:true);
 
-        Button btn = btnGO.AddComponent<Button>();
-        Image bgImg = btnGO.GetComponent<Image>();
+        var btn = tog.AddComponent<Button>();
         btn.onClick.AddListener(() => {
-            state        = !state;
-            bgImg.color  = state ? C_GREEN : C_GRAY;
-            lbl.text     = state ? "✔ ON" : "✘ OFF";
+            state = !state;
+            togImg.color = state ? C_GREEN : C_GRAY;
+            lbl.text = state ? "✔  ON" : "✘  OFF";
             onChange(state);
         });
+    }
+
+    GameObject RowBG(float h)
+    {
+        var go = NewGO("Row", _body);
+        var rt = RT(go);
+        rt.anchorMin = new Vector2(0,1); rt.anchorMax = new Vector2(1,1);
+        rt.pivot = new Vector2(0.5f,1);
+        rt.anchoredPosition = new Vector2(0, _y);
+        rt.sizeDelta = new Vector2(0, h);
+        Img(go, _rowIdx++%2==0 ? C_ROWA : C_ROWB, null);
+        _y -= h + 1f;
+        return go;
     }
 
     // ──────────────────────────────────────────────
@@ -437,314 +407,178 @@ public class GraphicsSettings : MonoBehaviour
     // ──────────────────────────────────────────────
     void ApplyPreset(int p)
     {
-        string[] descs = {
-            "🥔 Potato — Semua dimatikan, cocok HP kentang",
-            "🔋 Low — Bayangan minimal, cocok HP mid-range",
-            "⚖ Medium — Seimbang kualitas & performa",
-            "🔥 High — Kualitas tinggi, butuh HP gaming",
-            "💎 Ultra — Semua maksimal, PC/flagship"
-        };
-
-        switch (p)
-        {
-            case 0: Set(0.5f,  30,  0, 20f,  0, false, 0.2f, false, 0, 1.0f); break;
-            case 1: Set(0.65f, 30,  1, 40f,  1, false, 0.2f, false, 1, 1.0f); break;
-            case 2: Set(0.75f, 60,  2, 70f,  1, true,  0.4f, false, 1, 1.0f); break;
-            case 3: Set(0.9f,  60,  4, 100f, 2, true,  0.6f, false, 2, 1.0f); break;
-            case 4: Set(1.0f,  120, 5, 150f, 3, true,  0.8f, true,  2, 1.0f); break;
+        switch(p) {
+            case 0: S(0.50f,30,0,20f,0,false,0.2f,false,0,1.0f); break;
+            case 1: S(0.65f,30,1,40f,1,false,0.2f,false,1,1.0f); break;
+            case 2: S(0.75f,60,3,70f,1,true, 0.4f,false,1,1.0f); break;
+            case 3: S(0.90f,60,4,100f,2,true,0.6f,false,2,1.0f); break;
+            case 4: S(1.00f,120,5,150f,3,true,0.8f,true,2,1.0f); break;
         }
         ApplyAll();
-        RefreshLabels();
     }
+    void S(float rs,int fps,int shQ,float shD,int tex,bool bl,float bI,bool dof,int aa,float br)
+    { _renderScale=rs;_targetFPS=fps;_shadowQuality=shQ;_shadowDist=shD;
+      _textureQuality=tex;_bloomOn=bl;_bloomIntensity=bI;_dofOn=dof;_antiAliasing=aa;_brightness=br; }
 
-    void Set(float rs, int fps, int shQ, float shD, int tex,
-             bool bloom, float bloomI, bool dof, int aa, float bright)
-    {
-        _renderScale    = rs;   _targetFPS      = fps;
-        _shadowQuality  = shQ;  _shadowDist     = shD;
-        _textureQuality = tex;  _bloomOn        = bloom;
-        _bloomIntensity = bloomI; _dofOn         = dof;
-        _antiAliasing   = aa;   _brightness     = bright;
-    }
+    void ApplyAll() { ApplyRenderScale();ApplyFPS();ApplyShadow();ApplyShadowDist();
+                      ApplyTexture();ApplyAA();ApplyBloom();ApplyDOF();ApplyBrightness(); }
 
-    void ApplyAll()
-    {
-        ApplyRenderScale(); ApplyFPS();    ApplyShadow();
-        ApplyShadowDist();  ApplyTexture(); ApplyAA();
-        ApplyBloom();       ApplyDOF();    ApplyBrightness();
-    }
-
-    void ApplyRenderScale() { if (_urpAsset) _urpAsset.renderScale = _renderScale; }
+    void ApplyRenderScale() { if(_urpAsset) _urpAsset.renderScale = _renderScale; }
     void ApplyFPS()         { Application.targetFrameRate = _targetFPS; }
-
     void ApplyShadow()
     {
-        if (_urpAsset == null) return;
-        int[] res = {0, 256, 512, 1024, 2048, 4096};
-        if (_shadowQuality == 0) { _urpAsset.shadowDistance = 0; return; }
+        if (_urpAsset==null) return;
+        int[] res = {0,256,512,1024,2048,4096};
+        if (_shadowQuality==0) { _urpAsset.shadowDistance=0; return; }
         _urpAsset.shadowDistance = _shadowDist;
         _urpAsset.mainLightShadowmapResolution = res[_shadowQuality];
-        QualitySettings.shadows = _shadowQuality >= 3
-            ? UnityEngine.ShadowQuality.All
-            : UnityEngine.ShadowQuality.HardOnly;
+        QualitySettings.shadows = _shadowQuality>=3
+            ? UnityEngine.ShadowQuality.All : UnityEngine.ShadowQuality.HardOnly;
     }
-
-    void ApplyShadowDist() { if (_urpAsset && _shadowQuality > 0) _urpAsset.shadowDistance = _shadowDist; }
-
-    void ApplyTexture()
-    {
-        // 0=Low(2) 1=Med(1) 2=High(0) 3=Ultra(0+mips)
-        int[] mip = {2, 1, 0, 0};
-        QualitySettings.globalTextureMipmapLimit = mip[_textureQuality];
-    }
-
+    void ApplyShadowDist()  { if(_urpAsset&&_shadowQuality>0) _urpAsset.shadowDistance=_shadowDist; }
+    void ApplyTexture()     { int[]m={2,1,0,0}; QualitySettings.globalTextureMipmapLimit=m[_textureQuality]; }
     void ApplyAA()
     {
-        var cam = Camera.main;
-        if (cam == null) return;
-        var cd = cam.GetComponent<UniversalAdditionalCameraData>();
-        if (cd == null) return;
-        cd.antialiasing = _antiAliasing == 0 ? AntialiasingMode.None
-            : _antiAliasing == 1 ? AntialiasingMode.FastApproximateAntialiasing
+        var cam=Camera.main; if(cam==null) return;
+        var cd=cam.GetComponent<UniversalAdditionalCameraData>(); if(cd==null) return;
+        cd.antialiasing = _antiAliasing==0 ? AntialiasingMode.None
+            : _antiAliasing==1 ? AntialiasingMode.FastApproximateAntialiasing
             : AntialiasingMode.SubpixelMorphologicalAntiAliasing;
     }
-
-    void ApplyBloom()
-    {
-        if (_bloom == null) return;
-        _bloom.active = _bloomOn;
-        _bloom.intensity.value = _bloomIntensity;
-    }
-
-    void ApplyDOF()  { if (_dof != null) _dof.active = _dofOn; }
-
-    void ApplyBrightness()
-    {
-        if (_colorAdj != null)
-            _colorAdj.postExposure.value = (_brightness - 1f) * 2f;
-    }
+    void ApplyBloom()      { if(_bloom!=null){_bloom.active=_bloomOn;_bloom.intensity.value=_bloomIntensity;} }
+    void ApplyDOF()        { if(_dof!=null) _dof.active=_dofOn; }
+    void ApplyBrightness() { if(_colorAdj!=null) _colorAdj.postExposure.value=(_brightness-1f)*2f; }
 
     // ──────────────────────────────────────────────
-    //  REFRESH LABELS
-    // ──────────────────────────────────────────────
-    void RefreshLabels()
-    {
-        SetLbl(_tRenderScale, new[]{"50% (Fastest)","65% (Fast)","75% (Balanced)","90% (Quality)","100% (Ultra)"},
-               new[]{C_RED,C_ORANGE,C_BLUE,C_GREEN,C_PURPLE}, RenderScaleIndex());
-        SetLbl(_tFPS,     new[]{"30 FPS","60 FPS","90 FPS","120 FPS"},
-               new[]{C_GREEN,C_BLUE,C_ORANGE,C_RED}, FPSIndex());
-        SetLbl(_tShadow,  new[]{"Off","Very Low","Low","Medium","High","Very High"},
-               new[]{C_GRAY,C_RED,C_ORANGE,C_BLUE,C_GREEN,C_PURPLE}, _shadowQuality);
-        SetLbl(_tShadowDist, new[]{"20m","40m","70m","100m","150m"},
-               new[]{C_RED,C_ORANGE,C_BLUE,C_GREEN,C_PURPLE}, ShadowDistIndex());
-        SetLbl(_tTexture, new[]{"Low","Medium","High","Ultra"},
-               new[]{C_RED,C_ORANGE,C_BLUE,C_PURPLE}, _textureQuality);
-        SetLbl(_tAA,      new[]{"Off","FXAA","SMAA"},
-               new[]{C_GRAY,C_BLUE,C_PURPLE}, _antiAliasing);
-        SetLbl(_tBloomInt,new[]{"0.2x","0.4x","0.6x","0.8x","1.0x"},
-               new[]{C_GRAY,C_BLUE,C_BLUE,C_ORANGE,C_RED}, BloomIntIndex());
-        SetLbl(_tBrightness,new[]{"60%","80%","100%","120%","140%"},
-               new[]{C_GRAY,C_BLUE,C_GREEN,C_ORANGE,C_RED}, BrightnessIndex());
-        if (_tBloom != null) { _tBloom.text = _bloomOn ? "✔ ON" : "✘ OFF"; }
-        if (_tDOF   != null) { _tDOF.text   = _dofOn   ? "✔ ON" : "✘ OFF"; }
-    }
-
-    void SetLbl(Text t, string[] opts, Color[] cols, int idx)
-    {
-        if (t == null) return;
-        idx = Mathf.Clamp(idx, 0, opts.Length - 1);
-        t.text  = opts[idx];
-        t.color = cols[idx];
-    }
-
-    // ──────────────────────────────────────────────
-    //  INDEX HELPERS
-    // ──────────────────────────────────────────────
-    int RenderScaleIndex() => _renderScale <= 0.50f ? 0
-        : _renderScale <= 0.65f ? 1 : _renderScale <= 0.75f ? 2
-        : _renderScale <= 0.90f ? 3 : 4;
-
-    int FPSIndex() => _targetFPS <= 30 ? 0 : _targetFPS <= 60 ? 1
-        : _targetFPS <= 90 ? 2 : 3;
-
-    int ShadowDistIndex() => _shadowDist <= 20 ? 0 : _shadowDist <= 40 ? 1
-        : _shadowDist <= 70 ? 2 : _shadowDist <= 100 ? 3 : 4;
-
-    int BloomIntIndex() => _bloomIntensity <= 0.2f ? 0 : _bloomIntensity <= 0.4f ? 1
-        : _bloomIntensity <= 0.6f ? 2 : _bloomIntensity <= 0.8f ? 3 : 4;
-
-    int BrightnessIndex() => _brightness <= 0.6f ? 0 : _brightness <= 0.8f ? 1
-        : _brightness <= 1.0f ? 2 : _brightness <= 1.2f ? 3 : 4;
-
-    // ──────────────────────────────────────────────
-    //  SAVE / LOAD / RESET
+    //  SAVE / LOAD
     // ──────────────────────────────────────────────
     void SaveSettings()
     {
-        PlayerPrefs.SetFloat("g_rs",  _renderScale);
-        PlayerPrefs.SetInt  ("g_fps", _targetFPS);
-        PlayerPrefs.SetInt  ("g_shQ", _shadowQuality);
-        PlayerPrefs.SetFloat("g_shD", _shadowDist);
-        PlayerPrefs.SetInt  ("g_tex", _textureQuality);
-        PlayerPrefs.SetInt  ("g_bl",  _bloomOn ? 1 : 0);
-        PlayerPrefs.SetFloat("g_bI",  _bloomIntensity);
-        PlayerPrefs.SetInt  ("g_dof", _dofOn ? 1 : 0);
-        PlayerPrefs.SetInt  ("g_aa",  _antiAliasing);
-        PlayerPrefs.SetFloat("g_br",  _brightness);
+        PlayerPrefs.SetFloat("g_rs",_renderScale); PlayerPrefs.SetInt("g_fps",_targetFPS);
+        PlayerPrefs.SetInt("g_shQ",_shadowQuality); PlayerPrefs.SetFloat("g_shD",_shadowDist);
+        PlayerPrefs.SetInt("g_tex",_textureQuality); PlayerPrefs.SetInt("g_bl",_bloomOn?1:0);
+        PlayerPrefs.SetFloat("g_bI",_bloomIntensity); PlayerPrefs.SetInt("g_dof",_dofOn?1:0);
+        PlayerPrefs.SetInt("g_aa",_antiAliasing); PlayerPrefs.SetFloat("g_br",_brightness);
         PlayerPrefs.Save();
-        Debug.Log("[Graphics] Settings saved!");
     }
-
     void LoadSettings()
     {
-        _renderScale    = PlayerPrefs.GetFloat("g_rs",  0.75f);
-        _targetFPS      = PlayerPrefs.GetInt  ("g_fps", 30);
-        _shadowQuality  = PlayerPrefs.GetInt  ("g_shQ", 1);
-        _shadowDist     = PlayerPrefs.GetFloat("g_shD", 40f);
-        _textureQuality = PlayerPrefs.GetInt  ("g_tex", 1);
-        _bloomOn        = PlayerPrefs.GetInt  ("g_bl",  0) == 1;
-        _bloomIntensity = PlayerPrefs.GetFloat("g_bI",  0.3f);
-        _dofOn          = PlayerPrefs.GetInt  ("g_dof", 0) == 1;
-        _antiAliasing   = PlayerPrefs.GetInt  ("g_aa",  1);
-        _brightness     = PlayerPrefs.GetFloat("g_br",  1f);
+        _renderScale=PlayerPrefs.GetFloat("g_rs",0.75f); _targetFPS=PlayerPrefs.GetInt("g_fps",30);
+        _shadowQuality=PlayerPrefs.GetInt("g_shQ",1); _shadowDist=PlayerPrefs.GetFloat("g_shD",40f);
+        _textureQuality=PlayerPrefs.GetInt("g_tex",1); _bloomOn=PlayerPrefs.GetInt("g_bl",0)==1;
+        _bloomIntensity=PlayerPrefs.GetFloat("g_bI",0.3f); _dofOn=PlayerPrefs.GetInt("g_dof",0)==1;
+        _antiAliasing=PlayerPrefs.GetInt("g_aa",1); _brightness=PlayerPrefs.GetFloat("g_br",1f);
         ApplyAll();
     }
-
     void ResetToDefault() { ApplyPreset(1); SaveSettings(); }
 
-    // ──────────────────────────────────────────────
-    //  VISIBILITY
-    // ──────────────────────────────────────────────
-    public void Show() { if (_panel) _panel.SetActive(true); }
-    public void Hide() { if (_panel) _panel.SetActive(false); }
+    // Index helpers
+    int RsIdx()  => _renderScale<=0.50f?0:_renderScale<=0.65f?1:_renderScale<=0.75f?2:_renderScale<=0.90f?3:4;
+    int FpsIdx() => _targetFPS<=30?0:_targetFPS<=60?1:_targetFPS<=90?2:3;
+    int SdIdx()  => _shadowDist<=20?0:_shadowDist<=40?1:_shadowDist<=70?2:_shadowDist<=100?3:4;
+    int BiIdx()  => _bloomIntensity<=0.2f?0:_bloomIntensity<=0.4f?1:_bloomIntensity<=0.6f?2:_bloomIntensity<=0.8f?3:4;
+    int BrIdx()  => _brightness<=0.6f?0:_brightness<=0.8f?1:_brightness<=1.0f?2:_brightness<=1.2f?3:4;
 
-    // ──────────────────────────────────────────────
-    //  UI HELPERS
-    // ──────────────────────────────────────────────
-    GameObject MakeImage(string name, Transform parent, Vector2 pos, Vector2 size,
-                         Vector2 anchor, Vector2 pivot, Color color)
+    // Visibility
+    public void Show()
     {
-        var go = new GameObject(name);
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.anchorMin = anchor; rt.anchorMax = anchor;
-        rt.pivot = pivot; rt.anchoredPosition = pos; rt.sizeDelta = size;
-        var img = go.AddComponent<Image>(); img.color = color;
-        return go;
-    }
-
-    GameObject MakeRect(string name, Transform parent, Vector2 pos, Vector2 size,
-                        Vector2 anchorMin, Vector2 anchorMax, Color color)
-    {
-        var go = new GameObject(name);
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        // Untuk content rows: anchor stretch horizontal, posisi manual vertical
-        if (anchorMin.x == 0f && anchorMax.x == 1f)
+        // FIX: Kalau panel null (belum pernah dibuat atau sudah di-destroy),
+        // rebuild dulu pakai parent terakhir yang diketahui
+        if (_panel == null)
         {
-            rt.anchorMin        = new Vector2(0f, 1f);
-            rt.anchorMax        = new Vector2(1f, 1f);
-            rt.pivot            = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, pos.y);
-            rt.sizeDelta        = new Vector2(0f, Mathf.Abs(size.y));
+            if (_lastParent != null)
+                BuildPanel(_lastParent);
+            else
+            {
+                Debug.LogError("[GraphicsSettings] Show() dipanggil tapi panel belum di-build. Pastikan BuildPanel() dipanggil dulu.");
+                return;
+            }
         }
-        else
-        {
-            rt.anchorMin = anchorMin; rt.anchorMax = anchorMax;
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = pos; rt.sizeDelta = size;
-        }
-        var img = go.AddComponent<Image>(); img.color = color;
-        return go;
+        _panel.SetActive(true);
     }
 
-    void MakeRoundedImage(Image img, int r)
+    public void Hide()
     {
-        img.sprite = MakeRoundedSprite(r);
-        img.type   = Image.Type.Sliced;
+        if (_panel != null)
+            _panel.SetActive(false);
     }
 
-    void MakeRoundedRect(GameObject go, int r)
+    // ──────────────────────────────────────────────
+    //  UI PRIMITIVES
+    // ──────────────────────────────────────────────
+    GameObject NewGO(string n, Transform p)
     {
-        var img = go.GetComponent<Image>();
-        if (img) { img.sprite = MakeRoundedSprite(r); img.type = Image.Type.Sliced; }
+        var g = new GameObject(n);
+        g.AddComponent<RectTransform>();
+        g.transform.SetParent(p, false);
+        return g;
     }
 
-    void MakeText(Transform parent, string text, Vector2 pos, Vector2 size,
-                  Vector2 anchorMin, Vector2 anchorMax,
-                  int fontSize, FontStyle style, Color color, TextAnchor align,
-                  bool stretch = false)
-    {
-        MakeTextComp(parent, text, fontSize, style, color, align, pos, size, anchorMin, anchorMax, stretch);
-    }
+    RectTransform RT(GameObject go)
+    { return go.GetComponent<RectTransform>() ?? go.AddComponent<RectTransform>(); }
 
-    Text MakeTextComp(Transform parent, string text, int fontSize, FontStyle style,
-                      Color color, TextAnchor align,
-                      Vector2 pos = default, Vector2 size = default,
-                      Vector2 anchorMin = default, Vector2 anchorMax = default,
-                      bool stretch = false)
+    void Img(GameObject go, Color col, Sprite spr)
+    { var i=go.AddComponent<Image>(); i.color=col; if(spr!=null){i.sprite=spr;i.type=Image.Type.Sliced;} }
+
+    void Txt(Transform p, string text, float x, float y, float w, float h,
+             int size, FontStyle style, Color col, TextAnchor align, bool stretch=false)
+    { TxtComp(p,text,size,style,col,align,x,y,w,h,stretch); }
+
+    Text TxtComp(Transform p, string text, int size, FontStyle style,
+                 Color col, TextAnchor align,
+                 float x=0,float y=0,float w=0,float h=0, bool stretch=false)
     {
-        var go = new GameObject("T");
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
+        var go = NewGO("T", p);
+        var rt = RT(go);
         if (stretch)
-        {
-            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-            rt.offsetMin = new Vector2(8,4); rt.offsetMax = new Vector2(-8,-4);
-        }
+        { rt.anchorMin=Vector2.zero; rt.anchorMax=Vector2.one;
+          rt.offsetMin=new Vector2(6,2); rt.offsetMax=new Vector2(-6,-2); }
         else
-        {
-            rt.anchorMin = anchorMin; rt.anchorMax = anchorMax;
-            rt.pivot = new Vector2(0f, 1f);
-            rt.anchoredPosition = pos; rt.sizeDelta = size;
-        }
-        var t = go.AddComponent<Text>();
-        t.text = text; t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        t.fontSize = fontSize; t.fontStyle = style;
-        t.color = color; t.alignment = align;
-        t.raycastTarget = false;
+        { rt.anchorMin=rt.anchorMax=new Vector2(0.5f,1f);
+          rt.pivot=new Vector2(0f,1f);
+          rt.anchoredPosition=new Vector2(x,y); rt.sizeDelta=new Vector2(w,h); }
+        var t=go.AddComponent<Text>();
+        t.text=text; t.font=Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        t.fontSize=size; t.fontStyle=style; t.color=col; t.alignment=align;
+        t.raycastTarget=false; t.supportRichText=true;
         return t;
     }
 
-    void MakeButton(Transform parent, string label, Vector2 pos, Vector2 size,
-                    Vector2 pivot, Color color, System.Action onClick, int fontSize = 16)
+    void Btn(Transform p, string lbl, float x, float y, float w, float h,
+             Color col, System.Action onClick, int size=16)
     {
-        var go = MakeImage("Btn", parent, pos, size, new Vector2(0.5f,0.5f), pivot, color);
-        MakeRoundedRect(go, 8);
-        MakeTextComp(go.transform, label, fontSize, FontStyle.Bold,
-                     Color.white, TextAnchor.MiddleCenter, stretch: true);
-        var btn = go.AddComponent<Button>();
-        btn.onClick.AddListener(() => onClick?.Invoke());
-        var cb = btn.colors;
-        cb.highlightedColor = new Color(color.r+0.15f, color.g+0.15f, color.b+0.15f, 1f);
-        cb.pressedColor     = new Color(color.r-0.1f,  color.g-0.1f,  color.b-0.1f,  1f);
-        btn.colors = cb;
+        var go = NewGO("Btn", p);
+        var rt = RT(go);
+        rt.anchorMin=rt.anchorMax=new Vector2(0.5f,0.5f);
+        rt.pivot=new Vector2(0.5f,0.5f);
+        rt.anchoredPosition=new Vector2(x,y); rt.sizeDelta=new Vector2(w,h);
+        var img=go.AddComponent<Image>(); img.color=col; img.sprite=RoundSprite(8); img.type=Image.Type.Sliced;
+        TxtComp(go.transform,lbl,size,FontStyle.Bold,Color.white,TextAnchor.MiddleCenter,stretch:true);
+        var btn=go.AddComponent<Button>(); btn.onClick.AddListener(()=>onClick?.Invoke());
+        var cb=btn.colors;
+        cb.highlightedColor=new Color(col.r+0.15f,col.g+0.15f,col.b+0.15f,1f);
+        cb.pressedColor=new Color(col.r-0.1f,col.g-0.1f,col.b-0.1f,1f);
+        btn.colors=cb;
     }
 
-    Sprite MakeRoundedSprite(int cornerR)
+    Sprite RoundSprite(int r)
     {
-        int res = 64;
-        var tex = new Texture2D(res, res, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        int c = Mathf.Clamp(cornerR, 1, res/2);
-        for (int y = 0; y < res; y++)
-        for (int x = 0; x < res; x++)
+        int res=64; int c=Mathf.Clamp(r,1,res/2);
+        var tex=new Texture2D(res,res,TextureFormat.RGBA32,false);
+        tex.filterMode=FilterMode.Bilinear;
+        for(int y=0;y<res;y++) for(int x=0;x<res;x++)
         {
-            float alpha = 1f;
-            int cx = -1, cy = -1;
-            if      (x < c       && y < c)       { cx = c;     cy = c; }
-            else if (x > res-1-c && y < c)       { cx = res-1-c; cy = c; }
-            else if (x < c       && y > res-1-c) { cx = c;     cy = res-1-c; }
-            else if (x > res-1-c && y > res-1-c) { cx = res-1-c; cy = res-1-c; }
-            if (cx >= 0)
-            {
-                float d = Vector2.Distance(new Vector2(x,y), new Vector2(cx,cy));
-                alpha = Mathf.Clamp01(1f - (d - (c-1.5f)) / 1.5f);
-            }
-            tex.SetPixel(x, y, new Color(1,1,1,alpha));
+            float alpha=1f; int cx=-1,cy=-1;
+            if(x<c&&y<c){cx=c;cy=c;}
+            else if(x>res-1-c&&y<c){cx=res-1-c;cy=c;}
+            else if(x<c&&y>res-1-c){cx=c;cy=res-1-c;}
+            else if(x>res-1-c&&y>res-1-c){cx=res-1-c;cy=res-1-c;}
+            if(cx>=0){float d=Vector2.Distance(new Vector2(x,y),new Vector2(cx,cy));
+                alpha=Mathf.Clamp01(1f-(d-(c-1.5f))/1.5f);}
+            tex.SetPixel(x,y,new Color(1,1,1,alpha));
         }
         tex.Apply();
-        return Sprite.Create(tex, new Rect(0,0,res,res), new Vector2(0.5f,0.5f), res,
-                             0, SpriteMeshType.FullRect, new Vector4(c,c,c,c));
+        return Sprite.Create(tex,new Rect(0,0,res,res),new Vector2(0.5f,0.5f),res,
+                             0,SpriteMeshType.FullRect,new Vector4(c,c,c,c));
     }
 }

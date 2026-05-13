@@ -66,7 +66,7 @@ public class FloatingJoystick : MonoBehaviour
     private readonly Vector2 _defJoystick   = new Vector2(100f, 100f);
     private readonly Vector2 _defSprint     = new Vector2(-200f, 110f);
     private readonly Vector2 _defInteract   = new Vector2(-200f, 250f);
-    private readonly Vector2 _defViewToggle = new Vector2(-20f, -20f);
+    private readonly Vector2 _defViewToggle = new Vector2(-200f, 390f); // FIX: di atas tombol Interact
 
     // ──────────────────────────────────────────────
     void Awake()
@@ -244,8 +244,10 @@ public class FloatingJoystick : MonoBehaviour
             onUp:   () => { _interactConsumed = true; });
 
         // ── Tombol View TPP/FPP ───────────────────
+        // FIX: anchor disamakan dengan tombol lain (kanan bawah = 1,0)
+        // dan posisi default di atas tombol Interact (y=390)
         GameObject viewGO = CreateButtonGO(canvasGO.transform, "ViewToggleButton", "TPP",
-            new Vector2(-200f, -250f), new Vector2(1f, 1f),
+            new Vector2(-200f, 390f), new Vector2(1f, 0f),
             new Color(0.6f, 0.2f, 0.8f, 0.5f), size: 100f,
             onDown: () => ToggleViewMode(),
             onUp:   () => { });
@@ -254,6 +256,15 @@ public class FloatingJoystick : MonoBehaviour
 
         StartCoroutine(FindCameraController());
         Debug.Log("[FloatingJoystick] UI dibuat! Joystick=kiri, Kamera=swipe kanan");
+
+        // FIX: Hapus posisi ViewToggle lama yang salah (anchor kanan atas → kanan bawah)
+        // Kalau y tersimpan negatif (posisi anchor lama), hapus supaya pakai default baru
+        if (PlayerPrefs.HasKey("view_y") && PlayerPrefs.GetFloat("view_y") < 0f)
+        {
+            PlayerPrefs.DeleteKey("view_x");
+            PlayerPrefs.DeleteKey("view_y");
+            Debug.Log("[FloatingJoystick] Posisi ViewToggle lama direset ke default baru.");
+        }
 
         // Load posisi tombol yang tersimpan
         LoadLayout();
