@@ -28,6 +28,19 @@ public class MinimapSystem : MonoBehaviour
     public Color playerDotColor = new Color(0f, 0.8f, 1f, 1f); // biru cyan
     public float playerDotSize  = 14f;
 
+    [Header("Floor Clip Settings")]
+    [Tooltip("Berapa unit di atas posisi Y player yang masih dirender minimap. " +
+             "Naikkan kalau atap lantai atas masih keliatan di minimap.")]
+    public float clipAbovePlayer = 1.5f;
+
+    [Header("Floor Zone Settings")]
+    [Tooltip("Batas Y minimum untuk dianggap Lantai 2. Set saat player berdiri di lantai 2, lihat Y di Inspector.")]
+    public float floor2MinY = 10f;
+    [Tooltip("Batas Y minimum untuk dianggap Lantai 3.")]
+    public float floor3MinY = 22f;
+    [Tooltip("Batas Y minimum untuk dianggap Atap/Loteng.")]
+    public float roofMinY   = 34f;
+
     // Private
     private Camera        _minimapCam;
     private RenderTexture _renderTex;
@@ -97,7 +110,9 @@ public class MinimapSystem : MonoBehaviour
         _minimapCam = camGO.AddComponent<Camera>();
         _minimapCam.orthographic     = true;
         _minimapCam.orthographicSize = cameraViewSize;
-        _minimapCam.nearClipPlane    = 0.1f;
+        // nearClipPlane di-update tiap frame di LateUpdate sesuai posisi Y player.
+        // Nilai awal: cameraHeight - clipAbovePlayer supaya langsung clip dari atas player.
+        _minimapCam.nearClipPlane    = Mathf.Max(0.01f, cameraHeight - clipAbovePlayer);
         _minimapCam.farClipPlane     = cameraHeight + 50f;
         _minimapCam.targetTexture    = _renderTex;
         _minimapCam.clearFlags       = CameraClearFlags.SolidColor;
@@ -242,6 +257,9 @@ public class MinimapSystem : MonoBehaviour
         labelTxt.fontStyle = FontStyle.Bold;
         labelTxt.color     = new Color(0.7f, 0.7f, 0.7f, 0.8f);
         labelTxt.alignment = TextAnchor.MiddleCenter;
+
+
+       
     }
 
     void CreateCompassLabel(Transform canvasParent, RectTransform panelRT)
@@ -300,15 +318,27 @@ public class MinimapSystem : MonoBehaviour
             else return; // belum ada player, skip
         }
 
+        // ── Update kamera minimap ─────────────────
+        float playerY = _playerTransform.position.y;
+
         // Kamera follow player dari atas, rotasi fixed (utara = Z+)
         _minimapCam.transform.position = new Vector3(
             _playerTransform.position.x,
-            _playerTransform.position.y + cameraHeight,
+            playerY + cameraHeight,
             _playerTransform.position.z
         );
 
         // Utara selalu atas — tidak ikut rotasi player
         _minimapCam.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+
+        // ── Near clip dinamis per lantai ──────────
+        // Kamera orthographic menghadap ke bawah.
+        // nearClipPlane = jarak dari posisi kamera ke bidang clip terdekat.
+        // Kita mau clip semua objek yang ada di atas (playerY + clipAbovePlayer).
+        // Jarak dari kamera (playerY + cameraHeight) ke titik clip atas =
+        //   cameraHeight - clipAbovePlayer
+        // Sehingga hanya lantai di bawah player + clipAbovePlayer yang ke-render.
+        _minimapCam.nearClipPlane = Mathf.Max(0.01f, cameraHeight - clipAbovePlayer);
 
         // Arrow player rotate sesuai arah hadap karakter
         if (_playerDot != null)

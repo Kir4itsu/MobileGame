@@ -136,7 +136,7 @@ public class SettingsMenu : MonoBehaviour
         _settingsPanel.transform.SetParent(parent, false);
 
         RectTransform panelRT = _settingsPanel.AddComponent<RectTransform>();
-        panelRT.sizeDelta        = new Vector2(320f, 320f);
+        panelRT.sizeDelta        = new Vector2(320f, 390f);
         panelRT.anchorMin        = new Vector2(0.5f, 0.5f);
         panelRT.anchorMax        = new Vector2(0.5f, 0.5f);
         panelRT.pivot            = new Vector2(0.5f, 0.5f);
@@ -202,6 +202,16 @@ public class SettingsMenu : MonoBehaviour
             new Vector2(260f, 45f),
             _btnNeutral,
             CloseSettings
+        );
+
+        // Tombol Exit Game
+        CreateMenuButton(
+            _settingsPanel.transform,
+            "🚪  Keluar Game",
+            new Vector2(0f, -340f),
+            new Vector2(260f, 45f),
+            _btnDanger,
+            ConfirmExit
         );
 
         _settingsPanel.SetActive(false);
@@ -317,6 +327,68 @@ public class SettingsMenu : MonoBehaviour
         Debug.Log("[SettingsMenu] Layout tombol disimpan!");
     }
 
+    void ConfirmExit()
+    {
+        // Pause game saat konfirmasi muncul
+        Time.timeScale = 0f;
+
+        // Buat panel konfirmasi di atas settings panel
+        GameObject confirmGO = new GameObject("ConfirmExitPanel");
+        confirmGO.transform.SetParent(_canvas.transform, false);
+
+        RectTransform rt = confirmGO.AddComponent<RectTransform>();
+        rt.sizeDelta        = new Vector2(300f, 200f);
+        rt.anchorMin        = new Vector2(0.5f, 0.5f);
+        rt.anchorMax        = new Vector2(0.5f, 0.5f);
+        rt.pivot            = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
+
+        Image bg  = confirmGO.AddComponent<Image>();
+        bg.color  = new Color(0.08f, 0.08f, 0.08f, 0.97f);
+        bg.sprite = CreateRoundedSprite();
+
+        // Judul
+        AddLabelAt(confirmGO.transform, "Keluar Game?", 24, Color.white,
+            new Vector2(0f, -30f), new Vector2(260f, 40f));
+        AddLabelAt(confirmGO.transform, "Yakin mau keluar?", 16,
+            new Color(0.7f, 0.7f, 0.7f, 1f),
+            new Vector2(0f, -75f), new Vector2(260f, 30f));
+
+        // Tombol Ya
+        CreateMenuButton(confirmGO.transform, "✔  Ya, Keluar",
+            new Vector2(-75f, -135f), new Vector2(120f, 45f),
+            _btnDanger, () => {
+                Time.timeScale = 1f;
+                Destroy(confirmGO);
+                ExitGame();
+            }, anchor: new Vector2(0.5f, 1f));
+
+        // Tombol Batal
+        CreateMenuButton(confirmGO.transform, "✘  Batal",
+            new Vector2(75f, -135f), new Vector2(120f, 45f),
+            _btnNeutral, () => {
+                Time.timeScale = 0f; // tetap pause karena settings masih buka
+                Destroy(confirmGO);
+            }, anchor: new Vector2(0.5f, 1f));
+    }
+
+    void ExitGame()
+    {
+        Debug.Log("[SettingsMenu] Keluar game...");
+
+        // Disconnect dari Photon dulu kalau masih konek
+        if (Photon.Pun.PhotonNetwork.IsConnected)
+        {
+            Photon.Pun.PhotonNetwork.Disconnect();
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
     // ──────────────────────────────────────────────
     //  UI HELPERS
     // ──────────────────────────────────────────────
@@ -403,6 +475,27 @@ public class SettingsMenu : MonoBehaviour
         txt.raycastTarget = false;
     }
 
+    void AddLabelAt(Transform parent, string text, int fontSize, Color color,
+                    Vector2 pos, Vector2 size)
+    {
+        GameObject go = new GameObject("Label");
+        go.transform.SetParent(parent, false);
+        RectTransform rt = go.AddComponent<RectTransform>();
+        rt.anchorMin        = new Vector2(0.5f, 1f);
+        rt.anchorMax        = new Vector2(0.5f, 1f);
+        rt.pivot            = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = pos;
+        rt.sizeDelta        = size;
+        Text txt          = go.AddComponent<Text>();
+        txt.text          = text;
+        txt.font          = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        txt.fontSize      = fontSize;
+        txt.fontStyle     = FontStyle.Bold;
+        txt.color         = color;
+        txt.alignment     = TextAnchor.MiddleCenter;
+        txt.raycastTarget = false;
+    }
+
     Sprite CreateRoundedSprite()
     {
         int res        = 128;
@@ -442,4 +535,3 @@ public class SettingsMenu : MonoBehaviour
             new Vector4(corner, corner, corner, corner)); // 9-slice border
     }
 }
-

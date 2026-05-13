@@ -553,9 +553,9 @@ MonoBehaviour:
   playerDotColor: {r: 0, g: 0.8, b: 1, a: 1}
   playerDotSize: 14
   clipAbovePlayer: 1.5
-  floor2MinY: 10
-  floor3MinY: 22
-  roofMinY: 34
+  floor2MinY: 3
+  floor3MinY: 6
+  roofMinY: 9
 --- !u!4 &321012003
 Transform:
   m_ObjectHideFlags: 0
@@ -2045,69 +2045,6 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: -1515144191993293674, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
---- !u!1 &794086516
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 794086518}
-  - component: {fileID: 794086517}
-  m_Layer: 0
-  m_Name: OptimizationManager
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &794086517
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 794086516}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f518c1350d449d1468fe19cfcf4299bc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AutoStaticBatching
-  excludedTags:
-  - Player
-  - OtherPlayer
-  - NPC
-  - Enemy
-  - Projectile
-  excludedNames:
-  - NPC
-  - T-Pose
-  - FloatingJoystick
-  - Canvas
-  - EventSystem
-  - Camera
-  - DialogueManager
-  - MinimapSystem
-  - SettingsMenu
-  - GraphicsSettings
-  combineOnStart: 1
-  showLog: 1
---- !u!4 &794086518
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 794086516}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -50.19992, y: 9.09025, z: 92.89032}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!64 &815072057
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -5101,4 +5038,3 @@ SceneRoots:
   - {fileID: 1196108752}
   - {fileID: 2099855032}
   - {fileID: 321012003}
-  - {fileID: 794086518}
