@@ -22,6 +22,7 @@ public class SettingsMenu : MonoBehaviour
     private GameObject      _dimOverlay;
     private GameObject      _pauseButton;   // tombol hamburger ≡
     private Text            _editModeHint;
+    private Text            _resizeTargetLabel; // label nama tombol yang sedang dipilih untuk resize
 
 
     // Warna
@@ -57,6 +58,16 @@ public class SettingsMenu : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.G) && _isSettingsOpen)
         {
             OpenGraphics();
+        }
+
+        // Update label nama tombol yang dipilih di panel resize
+        if (_isEditMode && _resizeTargetLabel != null && FloatingJoystick.Instance != null)
+        {
+            string selected = FloatingJoystick.Instance.GetSelectedButtonName();
+            _resizeTargetLabel.text  = selected != null ? selected : "Tap tombol";
+            _resizeTargetLabel.color = selected != null
+                ? new Color(0.3f, 1f, 0.5f, 1f)   // hijau = ada yang dipilih
+                : new Color(0.7f, 0.9f, 1f, 0.6f); // redup = belum pilih
         }
     }
 
@@ -263,9 +274,9 @@ public class SettingsMenu : MonoBehaviour
         overlayRT.offsetMin = Vector2.zero;
         overlayRT.offsetMax = Vector2.zero;
 
-        // Background semi-transparan
-        Image overlayImg  = _editModeOverlay.AddComponent<Image>();
-        overlayImg.color  = new Color(0f, 0f, 0f, 0.3f);
+        // Background semi-transparan — raycastTarget = false agar tidak block klik tombol
+        Image overlayImg         = _editModeOverlay.AddComponent<Image>();
+        overlayImg.color         = new Color(0f, 0f, 0f, 0.3f);
         overlayImg.raycastTarget = false;
 
         // Hint text atas
@@ -278,19 +289,89 @@ public class SettingsMenu : MonoBehaviour
         hintRT.anchoredPosition = new Vector2(0f, -30f);
         hintRT.sizeDelta        = new Vector2(0f, 60f);
         _editModeHint           = hintGO.AddComponent<Text>();
-        _editModeHint.text      = "✏ MODE EDIT — Drag tombol untuk memindahkan";
+        _editModeHint.text      = "✏ MODE EDIT — Drag tombol • Sudut kuning = resize";
         _editModeHint.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         _editModeHint.fontSize  = 22;
         _editModeHint.fontStyle = FontStyle.Bold;
         _editModeHint.color     = new Color(1f, 0.9f, 0.2f, 1f);
         _editModeHint.alignment = TextAnchor.MiddleCenter;
 
-        // Tombol Selesai (bawah tengah)
+        // ── Panel resize tombol (bawah, di atas tombol Selesai) ──
+        // Background panel resize
+        GameObject resizePanelGO = new GameObject("ResizePanel");
+        resizePanelGO.transform.SetParent(_editModeOverlay.transform, false);
+        RectTransform resizePanelRT = resizePanelGO.AddComponent<RectTransform>();
+        resizePanelRT.anchorMin        = new Vector2(0.5f, 0f);
+        resizePanelRT.anchorMax        = new Vector2(0.5f, 0f);
+        resizePanelRT.pivot            = new Vector2(0.5f, 0f);
+        resizePanelRT.anchoredPosition = new Vector2(0f, 130f);
+        resizePanelRT.sizeDelta        = new Vector2(340f, 100f);
+        Image resizePanelImg  = resizePanelGO.AddComponent<Image>();
+        resizePanelImg.color  = new Color(0.08f, 0.08f, 0.08f, 0.85f);
+        resizePanelImg.sprite = CreateRoundedSprite();
+
+        // Label "↺ Reset" kecil di pojok kanan atas panel resize
+        AddLabelAt(resizePanelGO.transform, "Ukuran Tombol", 18,
+            new Color(0.8f, 0.8f, 0.8f, 1f),
+            new Vector2(0f, -18f), new Vector2(300f, 28f));
+
+        // Tombol – (kecilkan tombol yang dipilih)
+        CreateMenuButton(
+            resizePanelGO.transform,
+            "－",
+            new Vector2(-85f, -65f),
+            new Vector2(70f, 44f),
+            new Color(0.7f, 0.2f, 0.2f, 0.9f),
+            () => FloatingJoystick.Instance?.ResizeSelectedButton(-15f),
+            anchor: new Vector2(0.5f, 1f)
+        );
+
+        // Label nama tombol yang dipilih (update tiap frame via coroutine)
+        GameObject selectedLabelGO = new GameObject("SelectedLabel");
+        selectedLabelGO.transform.SetParent(resizePanelGO.transform, false);
+        RectTransform selectedLabelRT = selectedLabelGO.AddComponent<RectTransform>();
+        selectedLabelRT.anchorMin        = new Vector2(0.5f, 1f);
+        selectedLabelRT.anchorMax        = new Vector2(0.5f, 1f);
+        selectedLabelRT.pivot            = new Vector2(0.5f, 0.5f);
+        selectedLabelRT.anchoredPosition = new Vector2(0f, -65f);
+        selectedLabelRT.sizeDelta        = new Vector2(120f, 44f);
+        _resizeTargetLabel               = selectedLabelGO.AddComponent<Text>();
+        _resizeTargetLabel.text          = "Tap tombol";
+        _resizeTargetLabel.font          = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        _resizeTargetLabel.fontSize      = 15;
+        _resizeTargetLabel.fontStyle     = FontStyle.Bold;
+        _resizeTargetLabel.color         = new Color(0.7f, 0.9f, 1f, 1f);
+        _resizeTargetLabel.alignment     = TextAnchor.MiddleCenter;
+        _resizeTargetLabel.raycastTarget = false;
+
+        // Tombol + (besarkan tombol yang dipilih)
+        CreateMenuButton(
+            resizePanelGO.transform,
+            "＋",
+            new Vector2(85f, -65f),
+            new Vector2(70f, 44f),
+            new Color(0.1f, 0.6f, 0.2f, 0.9f),
+            () => FloatingJoystick.Instance?.ResizeSelectedButton(15f),
+            anchor: new Vector2(0.5f, 1f)
+        );
+
+        // ── Tombol Reset Layout ─────────────────
+        CreateMenuButton(
+            _editModeOverlay.transform,
+            "↺ Reset",
+            new Vector2(0f, 130f + 110f),  // di atas resize panel
+            new Vector2(140f, 44f),
+            _btnNeutral,
+            () => FloatingJoystick.Instance?.ResetLayout(),
+            anchor: new Vector2(0.5f, 0f)
+        );
+
+        // ── Tombol Selesai & Simpan (paling bawah, mudah dijangkau) ──
         CreateMenuButton(
             _editModeOverlay.transform,
             "✔ Selesai & Simpan",
             new Vector2(0f, 50f),
-            new Vector2(260f, 60f),
+            new Vector2(280f, 65f),
             _btnSuccess,
             StopEditMode,
             anchor: new Vector2(0.5f, 0f)
@@ -350,6 +431,10 @@ public class SettingsMenu : MonoBehaviour
         _editModeOverlay.SetActive(true);
         FloatingJoystick.Instance?.SetEditMode(true);
         Time.timeScale = 1f;
+
+        // FIX: aktifkan raycaster SettingsCanvas agar tombol edit mode
+        // (Selesai & Simpan, Reset, +/-) bisa diklik meski settings panel sudah tutup
+        _raycaster.enabled = true;
     }
 
     void StopEditMode()
@@ -358,6 +443,9 @@ public class SettingsMenu : MonoBehaviour
         _editModeOverlay.SetActive(false);
         FloatingJoystick.Instance?.SetEditMode(false);
         FloatingJoystick.Instance?.SaveLayout();
+
+        // FIX: matikan kembali raycaster setelah edit mode selesai
+        _raycaster.enabled = false;
         Debug.Log("[SettingsMenu] Layout tombol disimpan!");
     }
 

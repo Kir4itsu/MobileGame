@@ -47,6 +47,7 @@ public class FloatingJoystick : MonoBehaviour
     private RectTransform    _background;
     private RectTransform    _handle;
     private Canvas           _canvas;
+    private GraphicRaycaster _canvasRaycaster; // FIX: disable saat edit mode agar tidak intercept klik Selesai
     private Text             _viewModeLabel;
     private CameraController _camController;
 
@@ -57,9 +58,7 @@ public class FloatingJoystick : MonoBehaviour
     private Vector2 _smoothCameraDelta= Vector2.zero;
 
     // ── WebGL / PC mouse tracking ─────────────────
-    // Joystick di WebGL: mouse kiri di area kiri
     private bool    _mouseJoystickActive = false;
-    // Kamera di WebGL: mouse kiri di area kanan (bukan tombol)
     private bool    _mouseCameraActive   = false;
     private Vector2 _mouseCameraLast;
 
@@ -67,10 +66,17 @@ public class FloatingJoystick : MonoBehaviour
     private bool _interactConsumed = false;
 
     // ── Edit mode ────────────────────────────────
-    private bool          _isEditMode   = false;
-    private RectTransform _draggingRT   = null;
-    private int           _dragFingerId = -1;
+    private bool          _isEditMode      = false;
+    private RectTransform _draggingRT      = null;
+    private RectTransform _resizingRT      = null; // tombol yang sedang di-resize
+    private int           _dragFingerId    = -1;
+    private int           _resizeFingerId  = -1;
     private Vector2       _dragOffset;
+    private Vector2       _resizeStartTouch;
+    private Vector2       _resizeStartSize;
+
+    // ── Selected button (untuk resize per-tombol) ──
+    private RectTransform _selectedRT      = null; // tombol yang sedang dipilih untuk resize
 
     // ── RectTransform tombol (untuk drag & collision) ──
     private RectTransform _rtJoystick;
@@ -78,11 +84,26 @@ public class FloatingJoystick : MonoBehaviour
     private RectTransform _rtInteract;
     private RectTransform _rtViewToggle;
 
-    // ── Default positions ─────────────────────────
+    // ── Resize handle GameObjects (ditampilkan saat edit mode) ──
+    private GameObject _resizeHandleJoystick;
+    private GameObject _resizeHandleSprint;
+    private GameObject _resizeHandleInteract;
+    private GameObject _resizeHandleViewToggle;
+
+    // ── Ukuran tombol (min/max) ───────────────────
+    private const float MIN_BTN_SIZE = 60f;
+    private const float MAX_BTN_SIZE = 220f;
+
+    // ── Default positions & sizes ─────────────────
     private readonly Vector2 _defJoystick   = new Vector2( 100f,  100f);
     private readonly Vector2 _defSprint     = new Vector2(-200f,  110f);
     private readonly Vector2 _defInteract   = new Vector2(-200f,  250f);
     private readonly Vector2 _defViewToggle = new Vector2(-200f,  390f);
+
+    private const float DEF_JOYSTICK_SIZE    = 180f;
+    private const float DEF_SPRINT_SIZE      = 120f;
+    private const float DEF_INTERACT_SIZE    = 110f;
+    private const float DEF_VIEW_TOGGLE_SIZE = 100f;
 
     // ─────────────────────────────────────────────
     void Awake()
@@ -91,7 +112,6 @@ public class FloatingJoystick : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // Deteksi mode input saat compile
 #if UNITY_WEBGL && !UNITY_EDITOR
         _inputMode = InputMode.WebGLMouse;
         Debug.Log("[FloatingJoystick] Mode: WebGL (pointer/mouse events)");
@@ -109,7 +129,6 @@ public class FloatingJoystick : MonoBehaviour
     // ─────────────────────────────────────────────
     void Update()
     {
-        // Reset interact consumed dari frame sebelumnya
         if (_interactConsumed)
         {
             InteractPressed   = false;
@@ -212,15 +231,9 @@ public class FloatingJoystick : MonoBehaviour
 
     // ═════════════════════════════════════════════
     //  WEBGL MOBILE BROWSER
-    //  Browser mengubah satu jari → "mouse button 0"
-    //  Kita bedakan joystick vs kamera dari area layar:
-    //    Kiri  = joystick
-    //    Kanan = kamera (kalau tidak kena tombol)
     // ═════════════════════════════════════════════
     void UpdateJoystickWebGL()
     {
-        // Joystick WebGL hanya aktif kalau pointer down di area kiri
-        // dan tidak sedang dipakai sebagai kamera
         if (_mouseCameraActive) return;
 
         Vector2 bgCenter = GetScreenCenter(_background);
@@ -267,7 +280,6 @@ public class FloatingJoystick : MonoBehaviour
             bool isRight    = mousePos.x > Screen.width * 0.5f;
             bool isOnButton = IsTouchOnAnyButton(mousePos);
 
-            // Kamera hanya dari area kanan, bukan tombol, dan joystick tidak aktif
             if (isRight && !isOnButton && !_mouseJoystickActive)
             {
                 _mouseCameraActive = true;
@@ -316,7 +328,6 @@ public class FloatingJoystick : MonoBehaviour
     {
         _rawCameraDelta = Vector2.zero;
 
-        // Mouse kanan untuk kamera di PC
         if (Input.GetMouseButton(1))
         {
             _rawCameraDelta = new Vector2(
@@ -336,7 +347,6 @@ public class FloatingJoystick : MonoBehaviour
         _smoothCameraDelta = Vector2.Lerp(
             _smoothCameraDelta, _rawCameraDelta, Time.deltaTime * cameraSmoothing);
 
-        // Fade out saat tidak ada input kamera
         bool cameraActive = (_cameraFingerId != -1) || _mouseCameraActive;
         if (!cameraActive)
             _smoothCameraDelta = Vector2.Lerp(
@@ -347,30 +357,59 @@ public class FloatingJoystick : MonoBehaviour
     }
 
     // ═════════════════════════════════════════════
-    //  EDIT MODE DRAG
+    //  EDIT MODE DRAG + RESIZE
     // ═════════════════════════════════════════════
     void HandleEditModeDrag()
     {
         if (!_isEditMode) return;
 
-        // Native touch drag
+        // Native touch drag & resize
         if (_inputMode == InputMode.NativeTouch)
         {
             foreach (Touch touch in Input.touches)
             {
-                if (touch.phase == TouchPhase.Began && _dragFingerId == -1)
+                // ── Resize (finger baru setelah drag sudah ada) ──
+                if (touch.phase == TouchPhase.Began && _resizeFingerId == -1 && _draggingRT != null)
                 {
-                    RectTransform hit = GetTouchedButton(touch.position);
-                    if (hit != null)
+                    // Finger kedua = resize
+                    if (touch.fingerId != _dragFingerId)
                     {
-                        _draggingRT   = hit;
-                        _dragFingerId = touch.fingerId;
-                        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                            (RectTransform)hit.parent, touch.position, null, out Vector2 lp);
-                        _dragOffset = hit.anchoredPosition - lp;
+                        _resizingRT       = _draggingRT;
+                        _resizeFingerId   = touch.fingerId;
+                        _resizeStartTouch = touch.position;
+                        _resizeStartSize  = _resizingRT.sizeDelta;
                     }
                 }
-                else if (touch.fingerId == _dragFingerId && _draggingRT != null)
+                // ── Drag (finger pertama) ──
+                else if (touch.phase == TouchPhase.Began && _dragFingerId == -1 && _resizeFingerId == -1)
+                {
+                    // Cek apakah mengenai resize handle dulu
+                    RectTransform hitHandle = GetTouchedResizeHandle(touch.position);
+                    if (hitHandle != null)
+                    {
+                        // Drag = parent dari handle
+                        _draggingRT   = (RectTransform)hitHandle.parent;
+                        _dragFingerId = touch.fingerId;
+                        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                            (RectTransform)_draggingRT.parent, touch.position, null, out Vector2 lp);
+                        _dragOffset = _draggingRT.anchoredPosition - lp;
+                    }
+                    else
+                    {
+                        RectTransform hit = GetTouchedButton(touch.position);
+                        if (hit != null)
+                        {
+                            _draggingRT   = hit;
+                            _dragFingerId = touch.fingerId;
+                            RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                                (RectTransform)hit.parent, touch.position, null, out Vector2 lp);
+                            _dragOffset = hit.anchoredPosition - lp;
+                        }
+                    }
+                }
+
+                // ── Apply drag ──
+                if (touch.fingerId == _dragFingerId && _draggingRT != null && _resizeFingerId == -1)
                 {
                     if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary)
                     {
@@ -380,15 +419,49 @@ public class FloatingJoystick : MonoBehaviour
                     }
                     else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
                     {
+                        // Jika tidak banyak bergerak = tap → set sebagai selected untuk resize
+                        float moveDist = Vector2.Distance(touch.position,
+                            _draggingRT.position + (Vector3)_dragOffset);
+                        if (moveDist < 20f)
+                            SetSelectedButton(_draggingRT == _selectedRT ? null : _draggingRT);
+
                         _draggingRT = null; _dragFingerId = -1;
+                    }
+                }
+
+                // ── Apply resize (pinch-drag jari kedua) ──
+                if (touch.fingerId == _resizeFingerId && _resizingRT != null)
+                {
+                    if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary)
+                    {
+                        float delta = touch.position.y - _resizeStartTouch.y;
+                        float newSize = Mathf.Clamp(_resizeStartSize.x + delta * 0.5f, MIN_BTN_SIZE, MAX_BTN_SIZE);
+                        ApplyResize(_resizingRT, newSize);
+                    }
+                    else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+                    {
+                        _resizingRT = null; _resizeFingerId = -1;
                     }
                 }
             }
         }
 
-        // WebGL + PC — mouse drag
+        // WebGL + PC — mouse drag & scroll resize
         if (_inputMode == InputMode.WebGLMouse || _inputMode == InputMode.PCKeyboard)
         {
+            // Scroll wheel untuk resize tombol yang di-hover
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scroll) > 0.01f)
+            {
+                RectTransform hovered = GetTouchedButton(Input.mousePosition);
+                if (hovered != null)
+                {
+                    float currentSize = hovered.sizeDelta.x;
+                    float newSize = Mathf.Clamp(currentSize + scroll * 200f, MIN_BTN_SIZE, MAX_BTN_SIZE);
+                    ApplyResize(hovered, newSize);
+                }
+            }
+
             if (Input.GetMouseButtonDown(0) && _dragFingerId == -1)
             {
                 RectTransform hit = GetTouchedButton(Input.mousePosition);
@@ -407,7 +480,32 @@ public class FloatingJoystick : MonoBehaviour
                     (RectTransform)_draggingRT.parent, Input.mousePosition, null, out Vector2 lp);
                 _draggingRT.anchoredPosition = lp + _dragOffset;
             }
-            if (Input.GetMouseButtonUp(0)) { _draggingRT = null; _dragFingerId = -1; }
+            if (Input.GetMouseButtonUp(0))
+            {
+                // Jika mouse nyaris tidak bergerak = klik/tap → set selected
+                if (_draggingRT != null)
+                {
+                    RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                        (RectTransform)_draggingRT.parent, Input.mousePosition, null, out Vector2 lp);
+                    float moveDist = Vector2.Distance(lp, _draggingRT.anchoredPosition - _dragOffset);
+                    if (moveDist < 10f)
+                        SetSelectedButton(_draggingRT == _selectedRT ? null : _draggingRT);
+                }
+                _draggingRT = null; _dragFingerId = -1;
+            }
+        }
+    }
+
+    // Apply resize ke tombol (dan update handle joystick jika itu joystick)
+    void ApplyResize(RectTransform rt, float newSize)
+    {
+        rt.sizeDelta = new Vector2(newSize, newSize);
+
+        // Kalau joystick background, update ukuran handle juga
+        if (rt == _rtJoystick)
+        {
+            float ratio = newSize / backgroundSize;
+            _handle.sizeDelta = new Vector2(handleSize * ratio, handleSize * ratio);
         }
     }
 
@@ -424,14 +522,14 @@ public class FloatingJoystick : MonoBehaviour
         _canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
         _canvas.sortingOrder = 999;
 
-        // ScaleWithScreenSize agar posisi tombol konsisten di semua resolusi HP
-        // ConstantPixelSize hanya cocok di Editor/Remote — di APK posisi tombol meleset
         CanvasScaler joystickScaler        = canvasGO.AddComponent<CanvasScaler>();
         joystickScaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         joystickScaler.referenceResolution = new Vector2(1080, 1920);
         joystickScaler.screenMatchMode     = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         joystickScaler.matchWidthOrHeight  = 0.5f;
-        canvasGO.AddComponent<GraphicRaycaster>();
+
+        // FIX: simpan reference raycaster agar bisa di-disable saat edit mode
+        _canvasRaycaster = canvasGO.AddComponent<GraphicRaycaster>();
 
         // ── EventSystem ──────────────────────────
         if (FindFirstObjectByType<EventSystem>() == null)
@@ -457,7 +555,7 @@ public class FloatingJoystick : MonoBehaviour
         Image bgImg         = bgGO.AddComponent<Image>();
         bgImg.color         = backgroundColor;
         bgImg.sprite        = CreateCircleSprite(128);
-        bgImg.raycastTarget = false; // joystick pakai raw input, bukan raycaster
+        bgImg.raycastTarget = false;
 
         // Rim
         GameObject rimGO = new GameObject("Rim");
@@ -511,6 +609,12 @@ public class FloatingJoystick : MonoBehaviour
         _rtViewToggle  = viewGO.GetComponent<RectTransform>();
         _viewModeLabel = viewGO.GetComponentInChildren<Text>();
 
+        // ── Resize handles (hidden by default) ───
+        _resizeHandleJoystick   = CreateResizeHandle(_rtJoystick);
+        _resizeHandleSprint     = CreateResizeHandle(_rtSprint);
+        _resizeHandleInteract   = CreateResizeHandle(_rtInteract);
+        _resizeHandleViewToggle = CreateResizeHandle(_rtViewToggle);
+
         // Hapus layout ViewToggle lama kalau y negatif (sisa anchor lama)
         if (PlayerPrefs.HasKey("view_y") && PlayerPrefs.GetFloat("view_y") < 0f)
         {
@@ -522,6 +626,48 @@ public class FloatingJoystick : MonoBehaviour
         StartCoroutine(FindCameraController());
 
         Debug.Log($"[FloatingJoystick] UI siap. InputMode={_inputMode}");
+    }
+
+    // ── Buat resize handle (sudut kanan bawah tiap tombol) ──
+    GameObject CreateResizeHandle(RectTransform parent)
+    {
+        GameObject go = new GameObject("ResizeHandle");
+        go.transform.SetParent(parent, false);
+
+        RectTransform rt = go.AddComponent<RectTransform>();
+        rt.sizeDelta        = new Vector2(32f, 32f);
+        rt.anchorMin        = new Vector2(1f, 0f);
+        rt.anchorMax        = new Vector2(1f, 0f);
+        rt.pivot            = new Vector2(1f, 0f);
+        rt.anchoredPosition = new Vector2(4f, -4f);
+
+        Image img  = go.AddComponent<Image>();
+        img.color  = new Color(1f, 1f, 0.2f, 0.9f);
+        img.sprite = CreateResizeHandleSprite();
+        img.raycastTarget = true;
+
+        go.SetActive(false); // hidden by default
+        return go;
+    }
+
+    // ── Sprite ikon resize (panah diagonal) ──
+    Sprite CreateResizeHandleSprite()
+    {
+        int res       = 32;
+        Texture2D tex = new Texture2D(res, res, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+
+        for (int y = 0; y < res; y++)
+        for (int x = 0; x < res; x++)
+        {
+            // Segitiga kanan bawah
+            bool inTriangle = (x + y >= res - 4);
+            tex.SetPixel(x, y, inTriangle
+                ? new Color(1f, 1f, 1f, 1f)
+                : new Color(0f, 0f, 0f, 0f));
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, res, res), new Vector2(0.5f, 0.5f), res);
     }
 
     // ═════════════════════════════════════════════
@@ -555,12 +701,28 @@ public class FloatingJoystick : MonoBehaviour
     {
         _isEditMode   = enabled;
         _draggingRT   = null;
-        _dragFingerId = -1;
+        _resizingRT   = null;
+        _dragFingerId    = -1;
+        _resizeFingerId  = -1;
+
+        // Reset selected button saat keluar edit mode
+        if (!enabled) SetSelectedButton(null);
+
+        // FIX UTAMA: matikan raycaster joystick canvas saat edit mode
+        // agar klik tombol "Selesai & Simpan" di SettingsCanvas (sortingOrder 1000) tidak diblok
+        if (_canvasRaycaster != null)
+            _canvasRaycaster.enabled = !enabled;
 
         SetButtonHighlight(_rtSprint,     enabled);
         SetButtonHighlight(_rtInteract,   enabled);
         SetButtonHighlight(_rtViewToggle, enabled);
         SetButtonHighlight(_rtJoystick,   enabled);
+
+        // Tampilkan/sembunyikan resize handles
+        SetResizeHandleVisible(_resizeHandleJoystick,   enabled);
+        SetResizeHandleVisible(_resizeHandleSprint,     enabled);
+        SetResizeHandleVisible(_resizeHandleInteract,   enabled);
+        SetResizeHandleVisible(_resizeHandleViewToggle, enabled);
     }
 
     void SetButtonHighlight(RectTransform rt, bool on)
@@ -572,49 +734,102 @@ public class FloatingJoystick : MonoBehaviour
         img.color = on ? new Color(c.r, c.g, c.b, 0.9f) : new Color(c.r, c.g, c.b, 0.5f);
     }
 
-    // ═════════════════════════════════════════════
-    //  HELPERS
-    // ═════════════════════════════════════════════
-    bool IsTouchOnAnyButton(Vector2 screenPos)
+    // Highlight khusus untuk tombol yang sedang dipilih (selected) di edit mode
+    void SetButtonSelectedHighlight(RectTransform rt)
     {
-        RectTransform[] buttons = { _rtSprint, _rtInteract, _rtViewToggle };
-        foreach (var rt in buttons)
-        {
-            if (rt == null || !rt.gameObject.activeSelf) continue;
-            if (RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
-                return true;
-        }
-        return false;
+        if (rt == null) return;
+        Image img = rt.GetComponent<Image>();
+        if (img == null) return;
+        Color c   = img.color;
+        // Tambah outline putih dengan alpha penuh + sedikit brighten
+        img.color = new Color(
+            Mathf.Min(c.r + 0.3f, 1f),
+            Mathf.Min(c.g + 0.3f, 1f),
+            Mathf.Min(c.b + 0.3f, 1f),
+            1f);
     }
 
-    RectTransform GetTouchedButton(Vector2 screenPos)
+    void SetResizeHandleVisible(GameObject handle, bool visible)
     {
-        RectTransform[] buttons = { _rtJoystick, _rtSprint, _rtInteract, _rtViewToggle };
-        foreach (var rt in buttons)
-        {
-            if (rt == null) continue;
-            if (RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
-                return rt;
-        }
+        if (handle != null) handle.SetActive(visible);
+    }
+
+    // ═════════════════════════════════════════════
+    //  RESIZE VIA TOMBOL +/- (dipanggil dari SettingsMenu)
+    // ═════════════════════════════════════════════
+    /// <summary>
+    /// Set tombol yang sedang dipilih untuk di-resize.
+    /// Null = deselect semua.
+    /// </summary>
+    public void SetSelectedButton(RectTransform rt)
+    {
+        // Kembalikan highlight button lama ke normal edit-mode style
+        if (_selectedRT != null)
+            SetButtonHighlight(_selectedRT, true); // kembali ke highlight edit mode biasa
+
+        _selectedRT = rt;
+
+        // Beri highlight khusus (lebih terang) untuk yang selected
+        if (_selectedRT != null)
+            SetButtonSelectedHighlight(_selectedRT);
+    }
+
+    /// <summary>
+    /// Resize hanya tombol yang sedang dipilih (tap dulu baru +/-).
+    /// Jika belum ada yang dipilih, tidak melakukan apa-apa.
+    /// </summary>
+    public void ResizeSelectedButton(float delta)
+    {
+        if (_selectedRT == null) return;
+        ResizeButton(_selectedRT, delta);
+    }
+
+    /// <summary>
+    /// Kembalikan nama tombol yang sedang dipilih (untuk label di SettingsMenu).
+    /// </summary>
+    public string GetSelectedButtonName()
+    {
+        if (_selectedRT == null)         return null;
+        if (_selectedRT == _rtJoystick)  return "Joystick";
+        if (_selectedRT == _rtSprint)    return "RUN";
+        if (_selectedRT == _rtInteract)  return "INTERACT";
+        if (_selectedRT == _rtViewToggle) return "TPP";
         return null;
     }
 
-    Vector2 GetScreenCenter(RectTransform rt)
+    /// <summary>
+    /// Resize semua tombol sekaligus. delta = nilai perubahan ukuran (positif = besar, negatif = kecil).
+    /// </summary>
+    public void ResizeAllButtons(float delta)
     {
-        // Pakai canvas camera = null untuk ScreenSpaceOverlay (world pos = screen pos langsung)
-        Vector3[] corners = new Vector3[4];
-        rt.GetWorldCorners(corners);
-        Vector2 c = Vector2.zero;
-        foreach (var corner in corners) c += new Vector2(corner.x, corner.y);
-        return c / 4f;
+        ResizeButton(_rtJoystick,   delta);
+        ResizeButton(_rtSprint,     delta);
+        ResizeButton(_rtInteract,   delta);
+        ResizeButton(_rtViewToggle, delta);
     }
 
-    // Konversi screen pos ke local rect — dipakai joystick WebGL & drag edit mode
-    // Harus pakai camera null untuk ScreenSpaceOverlay
-    bool ScreenToLocal(RectTransform parent, Vector2 screenPos, out Vector2 localPos)
+    /// <summary>
+    /// Resize satu tombol spesifik berdasarkan nama.
+    /// Nama valid: "joystick", "sprint", "interact", "view"
+    /// </summary>
+    public void ResizeButton(string buttonName, float delta)
     {
-        return RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            parent, screenPos, null, out localPos);
+        RectTransform rt = buttonName.ToLower() switch
+        {
+            "joystick" => _rtJoystick,
+            "sprint"   => _rtSprint,
+            "interact" => _rtInteract,
+            "view"     => _rtViewToggle,
+            _          => null
+        };
+        if (rt != null) ResizeButton(rt, delta);
+    }
+
+    void ResizeButton(RectTransform rt, float delta)
+    {
+        if (rt == null) return;
+        float newSize = Mathf.Clamp(rt.sizeDelta.x + delta, MIN_BTN_SIZE, MAX_BTN_SIZE);
+        ApplyResize(rt, newSize);
     }
 
     // ═════════════════════════════════════════════
@@ -633,24 +848,30 @@ public class FloatingJoystick : MonoBehaviour
     void SaveRT(string key, RectTransform rt)
     {
         if (rt == null) return;
-        PlayerPrefs.SetFloat(key + "_x", rt.anchoredPosition.x);
-        PlayerPrefs.SetFloat(key + "_y", rt.anchoredPosition.y);
+        PlayerPrefs.SetFloat(key + "_x",    rt.anchoredPosition.x);
+        PlayerPrefs.SetFloat(key + "_y",    rt.anchoredPosition.y);
+        PlayerPrefs.SetFloat(key + "_size", rt.sizeDelta.x);  // simpan ukuran juga
     }
 
     void LoadLayout()
     {
-        LoadRT("joy",  _rtJoystick,   _defJoystick);
-        LoadRT("spr",  _rtSprint,     _defSprint);
-        LoadRT("int",  _rtInteract,   _defInteract);
-        LoadRT("view", _rtViewToggle, _defViewToggle);
+        LoadRT("joy",  _rtJoystick,   _defJoystick,   DEF_JOYSTICK_SIZE);
+        LoadRT("spr",  _rtSprint,     _defSprint,     DEF_SPRINT_SIZE);
+        LoadRT("int",  _rtInteract,   _defInteract,   DEF_INTERACT_SIZE);
+        LoadRT("view", _rtViewToggle, _defViewToggle, DEF_VIEW_TOGGLE_SIZE);
     }
 
-    void LoadRT(string key, RectTransform rt, Vector2 defaultPos)
+    void LoadRT(string key, RectTransform rt, Vector2 defaultPos, float defaultSize)
     {
         if (rt == null) return;
         rt.anchoredPosition = PlayerPrefs.HasKey(key + "_x")
             ? new Vector2(PlayerPrefs.GetFloat(key + "_x"), PlayerPrefs.GetFloat(key + "_y"))
             : defaultPos;
+
+        float size = PlayerPrefs.HasKey(key + "_size")
+            ? PlayerPrefs.GetFloat(key + "_size")
+            : defaultSize;
+        ApplyResize(rt, size);
     }
 
     public void ResetLayout()
@@ -659,13 +880,14 @@ public class FloatingJoystick : MonoBehaviour
         {
             PlayerPrefs.DeleteKey(k + "_x");
             PlayerPrefs.DeleteKey(k + "_y");
+            PlayerPrefs.DeleteKey(k + "_size");
         }
         PlayerPrefs.Save();
 
-        if (_rtJoystick   != null) _rtJoystick.anchoredPosition   = _defJoystick;
-        if (_rtSprint      != null) _rtSprint.anchoredPosition      = _defSprint;
-        if (_rtInteract    != null) _rtInteract.anchoredPosition    = _defInteract;
-        if (_rtViewToggle  != null) _rtViewToggle.anchoredPosition  = _defViewToggle;
+        if (_rtJoystick   != null) { _rtJoystick.anchoredPosition   = _defJoystick;   ApplyResize(_rtJoystick,   DEF_JOYSTICK_SIZE); }
+        if (_rtSprint      != null) { _rtSprint.anchoredPosition      = _defSprint;     ApplyResize(_rtSprint,     DEF_SPRINT_SIZE); }
+        if (_rtInteract    != null) { _rtInteract.anchoredPosition    = _defInteract;   ApplyResize(_rtInteract,   DEF_INTERACT_SIZE); }
+        if (_rtViewToggle  != null) { _rtViewToggle.anchoredPosition  = _defViewToggle; ApplyResize(_rtViewToggle, DEF_VIEW_TOGGLE_SIZE); }
         Debug.Log("[FloatingJoystick] Layout direset!");
     }
 
@@ -714,9 +936,7 @@ public class FloatingJoystick : MonoBehaviour
         Image img  = btnGO.AddComponent<Image>();
         img.color  = color;
         img.sprite = CreateCircleSprite(128);
-        // raycastTarget = true (default) agar EventTrigger bisa terima pointer event
 
-        // Label
         GameObject textGO = new GameObject("Label");
         textGO.transform.SetParent(btnGO.transform, false);
         RectTransform textRT = textGO.AddComponent<RectTransform>();
@@ -733,7 +953,6 @@ public class FloatingJoystick : MonoBehaviour
         txt.alignment     = TextAnchor.MiddleCenter;
         txt.raycastTarget = false;
 
-        // EventTrigger — jalan di semua mode (native touch, WebGL pointer, PC mouse)
         EventTrigger trigger = btnGO.AddComponent<EventTrigger>();
         AddTrigger(trigger, EventTriggerType.PointerDown, (_) => onDown?.Invoke());
         AddTrigger(trigger, EventTriggerType.PointerUp,   (_) => onUp?.Invoke());
@@ -746,6 +965,61 @@ public class FloatingJoystick : MonoBehaviour
         var entry = new EventTrigger.Entry { eventID = type };
         entry.callback.AddListener(data => action(data));
         et.triggers.Add(entry);
+    }
+
+    // ═════════════════════════════════════════════
+    //  HELPERS
+    // ═════════════════════════════════════════════
+    bool IsTouchOnAnyButton(Vector2 screenPos)
+    {
+        RectTransform[] buttons = { _rtSprint, _rtInteract, _rtViewToggle };
+        foreach (var rt in buttons)
+        {
+            if (rt == null || !rt.gameObject.activeSelf) continue;
+            if (RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
+                return true;
+        }
+        return false;
+    }
+
+    RectTransform GetTouchedButton(Vector2 screenPos)
+    {
+        RectTransform[] buttons = { _rtJoystick, _rtSprint, _rtInteract, _rtViewToggle };
+        foreach (var rt in buttons)
+        {
+            if (rt == null) continue;
+            if (RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
+                return rt;
+        }
+        return null;
+    }
+
+    RectTransform GetTouchedResizeHandle(Vector2 screenPos)
+    {
+        GameObject[] handles = { _resizeHandleJoystick, _resizeHandleSprint, _resizeHandleInteract, _resizeHandleViewToggle };
+        foreach (var h in handles)
+        {
+            if (h == null || !h.activeSelf) continue;
+            RectTransform rt = h.GetComponent<RectTransform>();
+            if (rt != null && RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
+                return rt;
+        }
+        return null;
+    }
+
+    Vector2 GetScreenCenter(RectTransform rt)
+    {
+        Vector3[] corners = new Vector3[4];
+        rt.GetWorldCorners(corners);
+        Vector2 c = Vector2.zero;
+        foreach (var corner in corners) c += new Vector2(corner.x, corner.y);
+        return c / 4f;
+    }
+
+    bool ScreenToLocal(RectTransform parent, Vector2 screenPos, out Vector2 localPos)
+    {
+        return RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            parent, screenPos, null, out localPos);
     }
 
     // ═════════════════════════════════════════════
