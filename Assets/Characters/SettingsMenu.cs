@@ -16,6 +16,7 @@ public class SettingsMenu : MonoBehaviour
 
     // UI Refs
     private Canvas          _canvas;
+    private GraphicRaycaster _raycaster;     // FIX: disable saat settings tutup agar tidak block joystick
     private GameObject      _settingsPanel;
     private GameObject      _editModeOverlay;
     private GameObject      _dimOverlay;
@@ -70,23 +71,40 @@ public class SettingsMenu : MonoBehaviour
     // ──────────────────────────────────────────────
     void BuildUI()
     {
-        // ── Canvas ───────────────────────────────
+        // ── Canvas untuk Settings Panel & Dim (raycaster di-disable saat tutup) ──
         GameObject canvasGO = new GameObject("SettingsCanvas");
         DontDestroyOnLoad(canvasGO);
 
         _canvas = canvasGO.AddComponent<Canvas>();
         _canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 1000; // di atas JoystickCanvas
+        _canvas.sortingOrder = 1000;
 
-        canvasGO.AddComponent<CanvasScaler>().uiScaleMode =
-            CanvasScaler.ScaleMode.ConstantPixelSize;
-        canvasGO.AddComponent<GraphicRaycaster>();
+        CanvasScaler settingsScaler        = canvasGO.AddComponent<CanvasScaler>();
+        settingsScaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        settingsScaler.referenceResolution = new Vector2(1080, 1920);
+        settingsScaler.screenMatchMode     = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        settingsScaler.matchWidthOrHeight  = 0.5f;
+        _raycaster = canvasGO.AddComponent<GraphicRaycaster>();
+        _raycaster.enabled = false; // FIX: disable dulu, enable hanya saat settings terbuka
+
+        // ── Canvas khusus tombol hamburger (selalu aktif, sortingOrder di atas joystick) ──
+        GameObject btnCanvasGO = new GameObject("PauseButtonCanvas");
+        DontDestroyOnLoad(btnCanvasGO);
+        Canvas btnCanvas = btnCanvasGO.AddComponent<Canvas>();
+        btnCanvas.renderMode   = RenderMode.ScreenSpaceOverlay;
+        btnCanvas.sortingOrder = 1001;
+        CanvasScaler btnScaler        = btnCanvasGO.AddComponent<CanvasScaler>();
+        btnScaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        btnScaler.referenceResolution = new Vector2(1080, 1920);
+        btnScaler.screenMatchMode     = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        btnScaler.matchWidthOrHeight  = 0.5f;
+        btnCanvasGO.AddComponent<GraphicRaycaster>(); // selalu aktif
 
         // ── Dim overlay (awalnya hidden) ─────────
         BuildDimOverlay(canvasGO.transform);
 
-        // ── Tombol Pause / Settings (kanan atas) ──
-        CreatePauseButton(canvasGO.transform);
+        // ── Tombol Pause / Settings (kanan atas) — di canvas tersendiri ──
+        CreatePauseButton(btnCanvasGO.transform);
 
         // ── Settings Panel (awalnya hidden) ──────
         BuildSettingsPanel(canvasGO.transform);
@@ -290,6 +308,7 @@ public class SettingsMenu : MonoBehaviour
         _isSettingsOpen = !_isSettingsOpen;
         _settingsPanel.SetActive(_isSettingsOpen);
         _dimOverlay.SetActive(_isSettingsOpen);
+        _raycaster.enabled = _isSettingsOpen; // FIX: aktif hanya saat settings terbuka
 
         // Slow motion saat settings dibuka, normal saat ditutup
         Time.timeScale = _isSettingsOpen ? 0.15f : 1f;
@@ -300,6 +319,7 @@ public class SettingsMenu : MonoBehaviour
         _isSettingsOpen = false;
         _settingsPanel.SetActive(false);
         _dimOverlay.SetActive(false);
+        _raycaster.enabled = false; // FIX: matikan raycaster saat tutup
         Time.timeScale = 1f;
     }
 
@@ -390,14 +410,14 @@ public class SettingsMenu : MonoBehaviour
     {
         Debug.Log("[SettingsMenu] Keluar game...");
 
-        // Disconnect dari Photon dulu kalau masih konek
         if (Photon.Pun.PhotonNetwork.IsConnected)
-        {
             Photon.Pun.PhotonNetwork.Disconnect();
-        }
 
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
+#elif UNITY_WEBGL
+        // WebGL tidak bisa quit — reload halaman sebagai gantinya
+        Application.ExternalEval("location.reload();");
 #else
         Application.Quit();
 #endif

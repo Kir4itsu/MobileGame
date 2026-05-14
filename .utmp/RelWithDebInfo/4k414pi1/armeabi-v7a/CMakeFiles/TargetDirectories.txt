@@ -1,0 +1,8 @@
+E:/Unity/Project/Pembelajaran/.utmp/RelWithDebInfo/4k414pi1/armeabi-v7a/CMakeFiles/edit_cache.dir
+E:/Unity/Project/Pembelajaran/.utmp/RelWithDebInfo/4k414pi1/armeabi-v7a/CMakeFiles/rebuild_cache.dir
+E:/Unity/Project/Pembelajaran/.utmp/RelWithDebInfo/4k414pi1/armeabi-v7a/GameActivity/CMakeFiles/game.dir
+E:/Unity/Project/Pembelajaran/.utmp/RelWithDebInfo/4k414pi1/armeabi-v7a/GameActivity/CMakeFiles/edit_cache.dir
+E:/Unity/Project/Pembelajaran/.utmp/RelWithDebInfo/4k414pi1/armeabi-v7a/GameActivity/CMakeFiles/rebuild_cache.dir
+E:/Unity/Project/Pembelajaran/.utmp/RelWithDebInfo/4k414pi1/armeabi-v7a/FramePacing/CMakeFiles/swappywrapper.dir
+E:/Unity/Project/Pembelajaran/.utmp/RelWithDebInfo/4k414pi1/armeabi-v7a/FramePacing/CMakeFiles/edit_cache.dir
+E:/Unity/Project/Pembelajaran/.utmp/RelWithDebInfo/4k414pi1/armeabi-v7a/FramePacing/CMakeFiles/rebuild_cache.dir
