@@ -4,6 +4,18 @@
     <img src="https://img.shields.io/badge/Status-Early_Development-0d0221?style=for-the-badge&logo=unity&logoColor=00d4ff" /> 
 </p>
 
+[![Play in Browser](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Play%20in%20Browser&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://kir4itsu.github.io/MobileGame/)
+
+<p align="center">
+  <a href="https://kir4itsu.github.io/MobileGame/">
+    <img src="https://img.shields.io/badge/Play%20Now-Web%20Browser-0d0221?style=for-the-badge&logo=googlechrome&logoColor=00d4ff" />
+  </a>
+</p>
+
+This game can be played directly in your browser — no download required! Works on **PC** and **Mobile** browsers. Chrome is recommended for the best experience.
+
+> **Note:** Multiplayer features require a stable internet connection. For the best performance, use the Android APK version.
+
 [![Notes](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Notes&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu/MobileGame)
 
 If you encounter technical issues, bugs, or any problems related to this project, please contact me through the contact information provided on my  [![GitHub](https://img.shields.io/badge/GitHub-0d0221?style=for-the-badge&logo=github&logoColor=00d4ff)](https://github.com/Kir4itsu) profile or you can dm me to [![Discord](https://img.shields.io/badge/Discord-0d0221?style=for-the-badge&logo=discord&logoColor=7b2fff)](https://discord.com/users/775314296661213194).
