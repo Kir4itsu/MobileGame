@@ -4,6 +4,8 @@
     <img src="https://img.shields.io/badge/Status-Early_Development-0d0221?style=for-the-badge&logo=unity&logoColor=00d4ff" /> 
 </p>
 
+> **Note:** This is a single-player game. There are no multiplayer features.
+
 [![Play in Browser](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Play%20in%20Browser&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://kir4itsu.github.io/MobileGame/)
 
 <p align="center">
@@ -14,7 +16,7 @@
 
 This game can be played directly in your browser — no download required! Works on **PC** and **Mobile** browsers. Chrome is recommended for the best experience.
 
-> **Note:** This is a single-player game. There are no multiplayer features.
+> **Note:** The browser version is currently optimized for mobile devices during development. Some features, including parts of the settings menu, may not function properly on PC browsers due to touchscreen-based UI controls.
 
 [![Notes](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Notes&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu/MobileGame)
 
