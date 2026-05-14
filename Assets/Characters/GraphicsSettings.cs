@@ -52,21 +52,21 @@ public class GraphicsSettings : MonoBehaviour
     // W diset ke 80% screen width di BuildPanel()
     float W;
     const float PAD     = 16f;
-    const float ROW_H   = 100f;  // lebih tinggi biar teks tidak mepet
-    const float SEC_H   = 44f;   // section header lebih tinggi
-    const float PREV_H  = 96f;
-    const float FOOT_H  = 76f;
-    const float HEAD_H  = 64f;
+    const float ROW_H   = 115f;  // dinaikkan agar teks tidak mepet
+    const float SEC_H   = 52f;   // section header lebih tinggi
+    const float PREV_H  = 116f;
+    const float FOOT_H  = 86f;   // footer lebih tinggi
+    const float HEAD_H  = 74f;   // header lebih tinggi
 
-    // Font sizes — lebih besar biar terbaca dengan kacamata
-    const int FS_TITLE  = 22;   // judul row
-    const int FS_DESC   = 14;   // deskripsi row
-    const int FS_VAL    = 16;   // nilai badge
-    const int FS_BTN    = 18;   // tombol navigasi ◀▶
-    const int FS_SEC    = 16;   // section header
-    const int FS_HEAD   = 24;   // header panel
-    const int FS_FOOT   = 18;   // tombol footer
-    const int FS_PRESET = 14;   // tombol preset
+    // Font sizes — diperbesar agar lebih terbaca
+    const int FS_TITLE  = 28;   // judul row
+    const int FS_DESC   = 18;   // deskripsi row
+    const int FS_VAL    = 20;   // nilai badge
+    const int FS_BTN    = 22;   // tombol navigasi ◀▶
+    const int FS_SEC    = 20;   // section header
+    const int FS_HEAD   = 30;   // header panel
+    const int FS_FOOT   = 22;   // tombol footer
+    const int FS_PRESET = 18;   // tombol preset
 
     // Y cursor
     float _y;
@@ -324,14 +324,17 @@ public class GraphicsSettings : MonoBehaviour
         var go = RowBG(PREV_H);
         string[] lbl = {"🥔\nPotato","🔋\nLow","⚖\nMed","🔥\nHigh","💎\nUltra"};
         Color[]  col = {C_GRAY,C_GREEN,C_BLUE,C_ORG,C_PUR};
-        float bw = 80f, gap = 8f;
-        float start = -(bw*2 + gap*2);
-        for (int i = 0; i < 5; i++)
+        int count = 5;
+        float gap  = 10f;
+        float bw   = (W - PAD * 2f - gap * (count - 1)) / count;
+        float totalW = bw * count + gap * (count - 1);
+        float start  = -(totalW / 2f) + bw / 2f;
+        for (int i = 0; i < count; i++)
         {
             int idx = i;
             Btn(go.transform, lbl[i],
-                start + i*(bw+gap), 4f,
-                bw, 72f, col[i],
+                start + i * (bw + gap), 0f,
+                bw, PREV_H - 16f, col[i],
                 () => ApplyPreset(idx), FS_PRESET);
         }
     }
@@ -345,9 +348,9 @@ public class GraphicsSettings : MonoBehaviour
         cur = Mathf.Clamp(cur, 0, opts.Length-1);
         int idx = cur;
 
-        Txt(go.transform, title, -(W/2f)+PAD*2, -18f, W*0.50f, 30f,
+        Txt(go.transform, title, -(W/2f)+PAD*2, -22f, W*0.50f, 34f,
             FS_TITLE, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
-        Txt(go.transform, desc, -(W/2f)+PAD*2, -48f, W*0.50f, 24f,
+        Txt(go.transform, desc, -(W/2f)+PAD*2, -60f, W*0.50f, 26f,
             FS_DESC, FontStyle.Normal, C_DESC, TextAnchor.MiddleLeft);
 
         // Badge nilai — posisi dari kanan panel
@@ -356,28 +359,28 @@ public class GraphicsSettings : MonoBehaviour
         bRT.anchorMin = bRT.anchorMax = new Vector2(1f, 0.5f);
         bRT.pivot = new Vector2(1f, 0.5f);
         bRT.anchoredPosition = new Vector2(-96f, 8f);
-        bRT.sizeDelta = new Vector2(160f, 34f);
+        bRT.sizeDelta = new Vector2(170f, 40f);
         Img(badge, new Color(0,0,0,0.35f), RoundSprite(6));
         var valTxt = TxtComp(badge.transform, opts[idx], FS_VAL, FontStyle.Bold,
             cols[idx], TextAnchor.MiddleCenter, stretch:true);
 
         var warnTxt = TxtComp(go.transform, warn!=null?warn(idx):"",
-            10, FontStyle.Italic, C_WARN, TextAnchor.MiddleCenter);
+            12, FontStyle.Italic, C_WARN, TextAnchor.MiddleCenter);
         var wRT = RT(warnTxt.gameObject);
         wRT.anchorMin = new Vector2(0,0); wRT.anchorMax = new Vector2(1,0);
         wRT.pivot = new Vector2(0.5f,0);
         wRT.anchoredPosition = new Vector2(0,3f);
-        wRT.sizeDelta = new Vector2(-20f,16f);
+        wRT.sizeDelta = new Vector2(-20f,18f);
 
         // Tombol ◀▶ — anchor dari kanan
-        Btn(go.transform, "◀", -86f, 8f, 40f, 40f,
+        Btn(go.transform, "◀", -86f, 8f, 44f, 44f,
             new Color(0.2f,0.2f,0.28f,1f), () => {
                 idx = (idx-1+opts.Length)%opts.Length;
                 valTxt.text = opts[idx]; valTxt.color = cols[idx];
                 if (warnTxt) warnTxt.text = warn!=null?warn(idx):"";
                 onChange(idx);
             }, FS_BTN, anchorRight: true);
-        Btn(go.transform, "▶", -38f, 8f, 40f, 40f,
+        Btn(go.transform, "▶", -34f, 8f, 44f, 44f,
             new Color(0.2f,0.2f,0.28f,1f), () => {
                 idx = (idx+1)%opts.Length;
                 valTxt.text = opts[idx]; valTxt.color = cols[idx];
@@ -391,9 +394,9 @@ public class GraphicsSettings : MonoBehaviour
         var go = RowBG(ROW_H);
         bool state = cur;
 
-        Txt(go.transform, title, -(W/2f)+PAD*2, -18f, W*0.6f, 30f,
+        Txt(go.transform, title, -(W/2f)+PAD*2, -22f, W*0.6f, 34f,
             FS_TITLE, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
-        Txt(go.transform, desc, -(W/2f)+PAD*2, -48f, W*0.6f, 24f,
+        Txt(go.transform, desc, -(W/2f)+PAD*2, -60f, W*0.6f, 26f,
             FS_DESC, FontStyle.Normal, C_DESC, TextAnchor.MiddleLeft);
 
         var tog = NewGO("Tog", go.transform);
@@ -401,7 +404,7 @@ public class GraphicsSettings : MonoBehaviour
         tRT.anchorMin = tRT.anchorMax = new Vector2(1f,0.5f);
         tRT.pivot = new Vector2(1f,0.5f);
         tRT.anchoredPosition = new Vector2(-PAD*2, 8f);
-        tRT.sizeDelta = new Vector2(100f,38f);
+        tRT.sizeDelta = new Vector2(110f,44f);
         var togImg = tog.AddComponent<Image>();
         togImg.color  = state ? C_GREEN : C_GRAY;
         togImg.sprite = RoundSprite(10);
