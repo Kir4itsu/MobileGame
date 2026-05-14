@@ -142,28 +142,24 @@ public class DialogueManager : MonoBehaviour
     
     void Update()
     {
-        // Handle input
+        // Handle input — keyboard (PC) ATAU tombol Interact mobile
         if (dialogueActive)
         {
-            if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.E))
+            bool nextInput = Input.GetKeyDown(KeyCode.Space)
+                          || Input.GetKeyDown(KeyCode.E)
+                          || (FloatingJoystick.Instance != null && FloatingJoystick.Instance.InteractPressed);
+
+            if (nextInput)
             {
                 if (isTyping)
-                {
-                    // Skip typing animation
                     StopTyping();
-                }
                 else
-                {
-                    // Display next line
                     DisplayNextLine();
-                }
             }
             
             // Shadow pulse effect
             if (enableShadowPulse)
-            {
                 UpdateShadowPulse();
-            }
         }
     }
     
@@ -206,6 +202,14 @@ public class DialogueManager : MonoBehaviour
         // Show UI with animation
         StartCoroutine(ShowDialoguePanel());
         
+        // Sembunyikan semua UI mobile biar layar bersih
+        if (FloatingJoystick.Instance != null)
+            FloatingJoystick.Instance.HideMobileUI();
+        if (MinimapSystem.Instance != null)
+            MinimapSystem.Instance.HideMinimap();
+        if (SettingsMenu.Instance != null)
+            SettingsMenu.Instance.HideSettingsButton();
+
         // Lock player movement
         LockPlayerMovement(true);
         
@@ -414,6 +418,14 @@ public class DialogueManager : MonoBehaviour
         dialogueActive = false;
         currentLine = null;
         
+        // Tampilkan kembali semua UI mobile
+        if (FloatingJoystick.Instance != null)
+            FloatingJoystick.Instance.ShowMobileUI();
+        if (MinimapSystem.Instance != null)
+            MinimapSystem.Instance.ShowMinimap();
+        if (SettingsMenu.Instance != null)
+            SettingsMenu.Instance.ShowSettingsButton();
+
         // Unlock player movement
         LockPlayerMovement(false);
         

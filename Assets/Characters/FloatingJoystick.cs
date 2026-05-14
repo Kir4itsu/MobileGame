@@ -286,9 +286,11 @@ public class FloatingJoystick : MonoBehaviour
 
     void UpdateJoystickFromTouch()
     {
-        // Posisi & ukuran background dalam screen pixel
-        Vector2 bgCenter = GetScreenPosition(_background);
-        float   bgRadius = (_background.sizeDelta.x * 0.5f);
+        // FIX: Pakai RectTransformUtility untuk konversi world→screen yang benar
+        Vector2 bgCenter = GetScreenPositionFixed(_background);
+
+        // Handle range = radius background - radius handle (supaya handle pas di tepi)
+        float maxRange = (_background.sizeDelta.x * 0.5f) - (handleSize * 0.5f);
 
         foreach (Touch touch in Input.touches)
         {
@@ -297,9 +299,8 @@ public class FloatingJoystick : MonoBehaviour
 
             if (touch.phase == TouchPhase.Began)
             {
-                // Cek apakah touch di dalam atau dekat joystick background
                 float dist = Vector2.Distance(touch.position, bgCenter);
-                if (dist < bgRadius * 1.5f && _joystickFingerId == -1)
+                if (dist < _background.sizeDelta.x * 0.5f * 1.5f && _joystickFingerId == -1)
                 {
                     _joystickFingerId = touch.fingerId;
                 }
@@ -309,15 +310,16 @@ public class FloatingJoystick : MonoBehaviour
 
             if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary)
             {
-                // Hitung delta dari pusat background
+                // Delta dari pusat background dalam screen pixels
                 Vector2 delta   = touch.position - bgCenter;
-                Vector2 clamped = Vector2.ClampMagnitude(delta, handleRange);
+                // Clamp ke maxRange supaya handle pas di tepi frame
+                Vector2 clamped = Vector2.ClampMagnitude(delta, maxRange);
 
-                // Update posisi handle (convert screen delta ke local rect)
+                // anchoredPosition = screen delta langsung (canvas ConstantPixelSize = 1:1)
                 _handle.anchoredPosition = clamped;
 
-                Horizontal = clamped.x / handleRange;
-                Vertical   = clamped.y / handleRange;
+                Horizontal = clamped.x / maxRange;
+                Vertical   = clamped.y / maxRange;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
@@ -328,24 +330,20 @@ public class FloatingJoystick : MonoBehaviour
             }
         }
 
-        // PC / Editor / Keyboard: handle ikut bergerak saat WASD ditekan
-        // Aktif kalau tidak ada touch aktif (aman untuk PC & Android dengan keyboard)
+        // PC / Editor fallback
         if (_joystickFingerId == -1 && Input.touchCount == 0)
         {
-            // GetAxisRaw: langsung -1/0/1, tidak ada smoothing lambat dari Unity
             float h = Input.GetAxisRaw("Horizontal");
             float v = Input.GetAxisRaw("Vertical");
 
-            Vector2 targetPos = new Vector2(h * handleRange, v * handleRange);
+            Vector2 targetPos = new Vector2(h * maxRange, v * maxRange);
 
-            // Lerp supaya tidak langsung lompat
             _handle.anchoredPosition = Vector2.Lerp(
                 _handle.anchoredPosition,
                 targetPos,
                 Time.deltaTime * 25f
             );
 
-            // Snap ke nol kalau sudah sangat dekat
             if (targetPos.magnitude < 0.01f && _handle.anchoredPosition.magnitude < 1f)
                 _handle.anchoredPosition = Vector2.zero;
 
@@ -354,13 +352,14 @@ public class FloatingJoystick : MonoBehaviour
         }
     }
 
-    // Convert RectTransform anchored position ke screen position
-    Vector2 GetScreenPosition(RectTransform rt)
+    // FIX: Konversi RectTransform ke screen position yang benar
+    Vector2 GetScreenPositionFixed(RectTransform rt)
     {
         Vector3[] corners = new Vector3[4];
         rt.GetWorldCorners(corners);
-        // Rata-rata 4 sudut = pusat
-        Vector2 center = (corners[0] + corners[1] + corners[2] + corners[3]) / 4f;
+        Vector2 center = Vector2.zero;
+        foreach (var c in corners) center += new Vector2(c.x, c.y);
+        center /= 4f;
         return center;
     }
 
@@ -652,5 +651,31 @@ public class FloatingJoystick : MonoBehaviour
         var entry = new EventTrigger.Entry { eventID = type };
         entry.callback.AddListener(data => action(data));
         et.triggers.Add(entry);
+    }
+
+    // ──────────────────────────────────────────────
+    //  SHOW / HIDE UI (dipanggil saat dialogue aktif)
+    // ──────────────────────────────────────────────
+    /// <summary>
+    /// Sembunyikan semua tombol mobile saat dialogue aktif biar layar bersih.
+    /// Dipanggil dari DialogueManager.
+    /// </summary>
+    public void HideMobileUI()
+    {
+        if (_rtJoystick   != null) _rtJoystick.gameObject.SetActive(false);
+        if (_rtSprint      != null) _rtSprint.gameObject.SetActive(false);
+        if (_rtInteract    != null) _rtInteract.gameObject.SetActive(false);
+        if (_rtViewToggle  != null) _rtViewToggle.gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// Tampilkan kembali semua tombol mobile setelah dialogue selesai.
+    /// </summary>
+    public void ShowMobileUI()
+    {
+        if (_rtJoystick   != null) _rtJoystick.gameObject.SetActive(true);
+        if (_rtSprint      != null) _rtSprint.gameObject.SetActive(true);
+        if (_rtInteract    != null) _rtInteract.gameObject.SetActive(true);
+        if (_rtViewToggle  != null) _rtViewToggle.gameObject.SetActive(true);
     }
 }

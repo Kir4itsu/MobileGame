@@ -103,11 +103,14 @@ public class NPCInteractable : MonoBehaviour
             }
         }
         
-        // Check for interaction input
-        if (playerInRange && Input.GetKeyDown(interactKey))
+        // Check for interaction input — keyboard (PC) ATAU tombol Interact mobile
+        bool interactInput = Input.GetKeyDown(interactKey)
+            || (FloatingJoystick.Instance != null && FloatingJoystick.Instance.InteractPressed);
+
+        if (playerInRange && interactInput)
         {
             if (enableDebugLogs)
-                Debug.Log($"🔑 [{npcName}] {interactKey} key pressed!");
+                Debug.Log($"🔑 [{npcName}] Interact triggered (key or mobile button)!");
             
             if (DialogueManager.Instance == null)
             {

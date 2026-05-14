@@ -19,6 +19,7 @@ public class SettingsMenu : MonoBehaviour
     private GameObject      _settingsPanel;
     private GameObject      _editModeOverlay;
     private GameObject      _dimOverlay;
+    private GameObject      _pauseButton;   // tombol hamburger ≡
     private Text            _editModeHint;
 
 
@@ -41,6 +42,21 @@ public class SettingsMenu : MonoBehaviour
     {
         // Tunggu FloatingJoystick siap dulu
         StartCoroutine(BuildAfterJoystick());
+    }
+
+    void Update()
+    {
+        // N → toggle settings menu (buka/tutup)
+        if (Input.GetKeyDown(KeyCode.N))
+        {
+            ToggleSettings();
+        }
+
+        // G → langsung buka Graphics Settings (hanya kalau settings menu sudah terbuka)
+        if (Input.GetKeyDown(KeyCode.G) && _isSettingsOpen)
+        {
+            OpenGraphics();
+        }
     }
 
     System.Collections.IEnumerator BuildAfterJoystick()
@@ -107,6 +123,7 @@ public class SettingsMenu : MonoBehaviour
     {
         GameObject btnGO = new GameObject("PauseButton");
         btnGO.transform.SetParent(parent, false);
+        _pauseButton = btnGO; // simpan reference
 
         RectTransform rt = btnGO.AddComponent<RectTransform>();
         rt.sizeDelta        = new Vector2(70f, 70f);
@@ -135,8 +152,12 @@ public class SettingsMenu : MonoBehaviour
         _settingsPanel = new GameObject("SettingsPanel");
         _settingsPanel.transform.SetParent(parent, false);
 
+        // Panel 60% lebar layar, tinggi otomatis
+        float pw = Mathf.Clamp(Screen.width * 0.60f, 280f, 600f);
+        float ph = 380f;
+
         RectTransform panelRT = _settingsPanel.AddComponent<RectTransform>();
-        panelRT.sizeDelta        = new Vector2(320f, 390f);
+        panelRT.sizeDelta        = new Vector2(pw, ph);
         panelRT.anchorMin        = new Vector2(0.5f, 0.5f);
         panelRT.anchorMax        = new Vector2(0.5f, 0.5f);
         panelRT.pivot            = new Vector2(0.5f, 0.5f);
@@ -145,6 +166,8 @@ public class SettingsMenu : MonoBehaviour
         Image panelImg  = _settingsPanel.AddComponent<Image>();
         panelImg.color  = _panelBg;
         panelImg.sprite = CreateRoundedSprite();
+
+        float btnW = pw - 60f; // lebar tombol sesuai panel
 
         // Title
         GameObject titleGO = new GameObject("Title");
@@ -155,8 +178,8 @@ public class SettingsMenu : MonoBehaviour
         titleRT.pivot            = new Vector2(0.5f, 1f);
         titleRT.anchoredPosition = new Vector2(0f, -20f);
         titleRT.sizeDelta        = new Vector2(0f, 50f);
-        Text titleTxt     = titleGO.AddComponent<Text>();
-        titleTxt.text      = "⚙ Settings";
+        Text titleTxt      = titleGO.AddComponent<Text>();
+        titleTxt.text      = "⚙  Settings";
         titleTxt.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         titleTxt.fontSize  = 28;
         titleTxt.fontStyle = FontStyle.Bold;
@@ -166,50 +189,41 @@ public class SettingsMenu : MonoBehaviour
         // Separator
         CreateSeparator(_settingsPanel.transform, -75f);
 
-        // Label section
-        CreateSectionLabel(_settingsPanel.transform, "🕹 Controls", -100f);
-
-        // Tombol Edit Layout
+        // Tombol Edit Layout (tanpa label Controls)
         CreateMenuButton(
             _settingsPanel.transform,
-            "Edit Layout Tombol",
-            new Vector2(0f, -150f),
-            new Vector2(260f, 55f),
+            "🕹  Edit Layout Tombol",
+            new Vector2(0f, -130f),
+            new Vector2(btnW, 55f),
             _btnPrimary,
-            () => {
-                CloseSettings();
-                StartEditMode();
-            }
+            () => { CloseSettings(); StartEditMode(); }
         );
 
         // Tombol Grafik
         CreateMenuButton(
             _settingsPanel.transform,
             "🎮  Pengaturan Grafik",
-            new Vector2(0f, -215f),
-            new Vector2(260f, 55f),
+            new Vector2(0f, -200f),
+            new Vector2(btnW, 55f),
             new Color(0.5f, 0.2f, 0.7f, 0.9f),
-            () => {
-                OpenGraphics();
-            }
+            () => { OpenGraphics(); }
         );
 
-        // Tombol Close
+        // Tutup & Keluar Game — split 2 tombol sebaris
+        float halfW = (btnW - 10f) / 2f; // setengah lebar dengan gap 10px
         CreateMenuButton(
             _settingsPanel.transform,
             "Tutup",
-            new Vector2(0f, -278f),
-            new Vector2(260f, 45f),
+            new Vector2(-(halfW / 2f + 5f), -278f),
+            new Vector2(halfW, 55f),
             _btnNeutral,
             CloseSettings
         );
-
-        // Tombol Exit Game
         CreateMenuButton(
             _settingsPanel.transform,
-            "🚪  Keluar Game",
-            new Vector2(0f, -340f),
-            new Vector2(260f, 45f),
+            "🚪  Keluar",
+            new Vector2(halfW / 2f + 5f, -278f),
+            new Vector2(halfW, 55f),
             _btnDanger,
             ConfirmExit
         );
@@ -533,5 +547,18 @@ public class SettingsMenu : MonoBehaviour
             0,
             SpriteMeshType.FullRect,
             new Vector4(corner, corner, corner, corner)); // 9-slice border
+    }
+
+    // ──────────────────────────────────────────────
+    //  SHOW / HIDE SETTINGS BUTTON
+    // ──────────────────────────────────────────────
+    public void HideSettingsButton()
+    {
+        if (_pauseButton != null) _pauseButton.SetActive(false);
+    }
+
+    public void ShowSettingsButton()
+    {
+        if (_pauseButton != null) _pauseButton.SetActive(true);
     }
 }

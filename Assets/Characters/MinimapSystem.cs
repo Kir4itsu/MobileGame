@@ -33,14 +33,6 @@ public class MinimapSystem : MonoBehaviour
              "Naikkan kalau atap lantai atas masih keliatan di minimap.")]
     public float clipAbovePlayer = 1.5f;
 
-    [Header("Floor Zone Settings")]
-    [Tooltip("Batas Y minimum untuk dianggap Lantai 2. Set saat player berdiri di lantai 2, lihat Y di Inspector.")]
-    public float floor2MinY = 10f;
-    [Tooltip("Batas Y minimum untuk dianggap Lantai 3.")]
-    public float floor3MinY = 22f;
-    [Tooltip("Batas Y minimum untuk dianggap Atap/Loteng.")]
-    public float roofMinY   = 34f;
-
     // Private
     private Camera        _minimapCam;
     private RenderTexture _renderTex;
@@ -238,17 +230,16 @@ public class MinimapSystem : MonoBehaviour
         CreateCompassLabel(canvasGO.transform, panelRT);
 
         // ── Label nama minimap ────────────────────
+        // FIX: parent ke _panelGO bukan canvasGO, supaya ikut hide saat HideMinimap()
         GameObject labelGO = new GameObject("MinimapLabel");
-        labelGO.transform.SetParent(canvasGO.transform, false);
+        labelGO.transform.SetParent(_panelGO.transform, false);
 
         RectTransform labelRT = labelGO.AddComponent<RectTransform>();
-        labelRT.anchorMin        = new Vector2(0f, 1f);
-        labelRT.anchorMax        = new Vector2(0f, 1f);
-        labelRT.pivot            = new Vector2(0f, 1f);
-        labelRT.anchoredPosition = new Vector2(
-            screenOffset.x,
-            -(screenOffset.y + mapSize + 4f));
-        labelRT.sizeDelta = new Vector2(mapSize, 22f);
+        labelRT.anchorMin        = new Vector2(0f, 0f);
+        labelRT.anchorMax        = new Vector2(1f, 0f);
+        labelRT.pivot            = new Vector2(0.5f, 1f);
+        labelRT.anchoredPosition = new Vector2(0f, -4f);
+        labelRT.sizeDelta        = new Vector2(0f, 22f);
 
         Text labelTxt      = labelGO.AddComponent<Text>();
         labelTxt.text      = "▲ MINIMAP";
@@ -257,9 +248,6 @@ public class MinimapSystem : MonoBehaviour
         labelTxt.fontStyle = FontStyle.Bold;
         labelTxt.color     = new Color(0.7f, 0.7f, 0.7f, 0.8f);
         labelTxt.alignment = TextAnchor.MiddleCenter;
-
-
-       
     }
 
     void CreateCompassLabel(Transform canvasParent, RectTransform panelRT)
@@ -363,6 +351,19 @@ public class MinimapSystem : MonoBehaviour
 
     // ──────────────────────────────────────────────
     //  SPRITE GENERATORS
+    // ──────────────────────────────────────────────
+    //  SHOW / HIDE
+    // ──────────────────────────────────────────────
+    public void HideMinimap()
+    {
+        if (_panelGO != null) _panelGO.SetActive(false);
+    }
+
+    public void ShowMinimap()
+    {
+        if (_panelGO != null) _panelGO.SetActive(true);
+    }
+
     // ──────────────────────────────────────────────
     Sprite CreateCircleSprite(int res)
     {

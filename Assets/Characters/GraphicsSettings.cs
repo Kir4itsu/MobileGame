@@ -48,14 +48,25 @@ public class GraphicsSettings : MonoBehaviour
     static readonly Color C_DESC  = new Color(0.55f, 0.55f, 0.60f, 1.00f);
     static readonly Color C_WARN  = new Color(1.00f, 0.70f, 0.10f, 1.00f);
 
-    // Layout constants
-    const float W       = 520f;
-    const float PAD     = 12f;
-    const float ROW_H   = 78f;
-    const float SEC_H   = 34f;
-    const float PREV_H  = 76f;
-    const float FOOT_H  = 62f;
-    const float HEAD_H  = 52f;
+    // Layout constants — dihitung dinamis saat BuildPanel() dipanggil
+    // W diset ke 80% screen width di BuildPanel()
+    float W;
+    const float PAD     = 16f;
+    const float ROW_H   = 100f;  // lebih tinggi biar teks tidak mepet
+    const float SEC_H   = 44f;   // section header lebih tinggi
+    const float PREV_H  = 96f;
+    const float FOOT_H  = 76f;
+    const float HEAD_H  = 64f;
+
+    // Font sizes — lebih besar biar terbaca dengan kacamata
+    const int FS_TITLE  = 22;   // judul row
+    const int FS_DESC   = 14;   // deskripsi row
+    const int FS_VAL    = 16;   // nilai badge
+    const int FS_BTN    = 18;   // tombol navigasi ◀▶
+    const int FS_SEC    = 16;   // section header
+    const int FS_HEAD   = 24;   // header panel
+    const int FS_FOOT   = 18;   // tombol footer
+    const int FS_PRESET = 14;   // tombol preset
 
     // Y cursor
     float _y;
@@ -105,6 +116,9 @@ public class GraphicsSettings : MonoBehaviour
 
         _lastParent = parent;
 
+        // FIX: Lebar panel = 80% lebar layar, min 400, max 900
+        W = Mathf.Clamp(Screen.width * 0.80f, 400f, 900f);
+
         // Hitung total tinggi konten
         float contentH = HEAD_H
             + SEC_H + PREV_H                      // Preset
@@ -115,7 +129,7 @@ public class GraphicsSettings : MonoBehaviour
                     + (_dof!=null ? ROW_H : 0) + ROW_H  // PostFX
             + FOOT_H + PAD * 2f;
 
-        float panelH = Mathf.Min(contentH, 620f);
+        float panelH = Mathf.Min(contentH, Screen.height * 0.85f);
 
         // ── Panel utama ───────────────────────────
         _panel = NewGO("GfxPanel", parent);
@@ -129,13 +143,27 @@ public class GraphicsSettings : MonoBehaviour
         // ── Header ───────────────────────────────
         var hdr = NewGO("Header", _panel.transform);
         var hdrRT = RT(hdr);
-        hdrRT.anchorMin = new Vector2(0,1); hdrRT.anchorMax = new Vector2(1,1);
-        hdrRT.pivot     = new Vector2(0.5f,1);
+        hdrRT.anchorMin        = new Vector2(0f, 1f);
+        hdrRT.anchorMax        = new Vector2(1f, 1f);
+        hdrRT.pivot            = new Vector2(0.5f, 1f);
         hdrRT.anchoredPosition = Vector2.zero;
-        hdrRT.sizeDelta = new Vector2(0, HEAD_H);
+        hdrRT.sizeDelta        = new Vector2(0f, HEAD_H);
         Img(hdr, C_HEAD, RoundSprite(18));
-        Txt(hdr.transform, "🎮  Graphics Settings", 0, -HEAD_H/2f, W-20f, HEAD_H,
-            20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        // Teks di tengah header — stretch fill seluruh header
+        var hdrTxt = NewGO("HdrTxt", hdr.transform);
+        var hdrTxtRT = RT(hdrTxt);
+        hdrTxtRT.anchorMin = Vector2.zero;
+        hdrTxtRT.anchorMax = Vector2.one;
+        hdrTxtRT.offsetMin = new Vector2(10f, 0f);
+        hdrTxtRT.offsetMax = new Vector2(-10f, 0f);
+        var t = hdrTxt.AddComponent<Text>();
+        t.text      = "🎮  Graphics Settings";
+        t.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        t.fontSize  = FS_HEAD;
+        t.fontStyle = FontStyle.Bold;
+        t.color     = Color.white;
+        t.alignment = TextAnchor.MiddleCenter;
+        t.raycastTarget = false;
 
         // ── ScrollView ────────────────────────────
         var sv = NewGO("ScrollView", _panel.transform);
@@ -178,11 +206,11 @@ public class GraphicsSettings : MonoBehaviour
         Img(foot, new Color(0.08f,0.08f,0.10f,1f), null);
 
         Btn(foot.transform, "💾  Simpan & Tutup",
-            -105f, 0f, 210f, 46f, C_BLUE,
-            () => { SaveSettings(); SettingsMenu.Instance?.CloseGraphics(); });
+            -105f, 0f, 230f, 54f, C_BLUE,
+            () => { SaveSettings(); SettingsMenu.Instance?.CloseGraphics(); }, FS_FOOT);
         Btn(foot.transform, "↺  Reset",
-            120f, 0f, 130f, 46f, C_RED,
-            ResetToDefault);
+            130f, 0f, 140f, 54f, C_RED,
+            ResetToDefault, FS_FOOT);
 
         // ── Isi konten ────────────────────────────
         _y = 0f; _rowIdx = 0;
@@ -286,7 +314,7 @@ public class GraphicsSettings : MonoBehaviour
         rt.sizeDelta = new Vector2(0, SEC_H);
         Img(go, col, null);
         Txt(go.transform, title, 0, 0, 0, 0,
-            14, FontStyle.Bold, new Color(0.85f,0.95f,1f,1f),
+            FS_SEC, FontStyle.Bold, new Color(0.85f,0.95f,1f,1f),
             TextAnchor.MiddleCenter, stretch: true);
         _y -= SEC_H;
     }
@@ -303,8 +331,8 @@ public class GraphicsSettings : MonoBehaviour
             int idx = i;
             Btn(go.transform, lbl[i],
                 start + i*(bw+gap), 4f,
-                bw, 60f, col[i],
-                () => ApplyPreset(idx), 12);
+                bw, 72f, col[i],
+                () => ApplyPreset(idx), FS_PRESET);
         }
     }
 
@@ -317,19 +345,20 @@ public class GraphicsSettings : MonoBehaviour
         cur = Mathf.Clamp(cur, 0, opts.Length-1);
         int idx = cur;
 
-        Txt(go.transform, title, -(W/2f)+PAD*2, -14f, W*0.55f, 26f,
-            15, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
-        Txt(go.transform, desc, -(W/2f)+PAD*2, -38f, W*0.55f, 20f,
-            11, FontStyle.Normal, C_DESC, TextAnchor.MiddleLeft);
+        Txt(go.transform, title, -(W/2f)+PAD*2, -18f, W*0.50f, 30f,
+            FS_TITLE, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
+        Txt(go.transform, desc, -(W/2f)+PAD*2, -48f, W*0.50f, 24f,
+            FS_DESC, FontStyle.Normal, C_DESC, TextAnchor.MiddleLeft);
 
+        // Badge nilai — posisi dari kanan panel
         var badge = NewGO("Badge", go.transform);
         var bRT = RT(badge);
-        bRT.anchorMin = bRT.anchorMax = new Vector2(1f,0.5f);
-        bRT.pivot = new Vector2(1f,0.5f);
-        bRT.anchoredPosition = new Vector2(-50f, 8f);
-        bRT.sizeDelta = new Vector2(155f, 30f);
+        bRT.anchorMin = bRT.anchorMax = new Vector2(1f, 0.5f);
+        bRT.pivot = new Vector2(1f, 0.5f);
+        bRT.anchoredPosition = new Vector2(-96f, 8f);
+        bRT.sizeDelta = new Vector2(160f, 34f);
         Img(badge, new Color(0,0,0,0.35f), RoundSprite(6));
-        var valTxt = TxtComp(badge.transform, opts[idx], 13, FontStyle.Bold,
+        var valTxt = TxtComp(badge.transform, opts[idx], FS_VAL, FontStyle.Bold,
             cols[idx], TextAnchor.MiddleCenter, stretch:true);
 
         var warnTxt = TxtComp(go.transform, warn!=null?warn(idx):"",
@@ -340,20 +369,21 @@ public class GraphicsSettings : MonoBehaviour
         wRT.anchoredPosition = new Vector2(0,3f);
         wRT.sizeDelta = new Vector2(-20f,16f);
 
-        Btn(go.transform, "◀", W/2f-88f, 8f, 34f, 34f,
+        // Tombol ◀▶ — anchor dari kanan
+        Btn(go.transform, "◀", -86f, 8f, 40f, 40f,
             new Color(0.2f,0.2f,0.28f,1f), () => {
                 idx = (idx-1+opts.Length)%opts.Length;
                 valTxt.text = opts[idx]; valTxt.color = cols[idx];
                 if (warnTxt) warnTxt.text = warn!=null?warn(idx):"";
                 onChange(idx);
-            }, 18);
-        Btn(go.transform, "▶", W/2f-46f, 8f, 34f, 34f,
+            }, FS_BTN, anchorRight: true);
+        Btn(go.transform, "▶", -38f, 8f, 40f, 40f,
             new Color(0.2f,0.2f,0.28f,1f), () => {
                 idx = (idx+1)%opts.Length;
                 valTxt.text = opts[idx]; valTxt.color = cols[idx];
                 if (warnTxt) warnTxt.text = warn!=null?warn(idx):"";
                 onChange(idx);
-            }, 18);
+            }, FS_BTN, anchorRight: true);
     }
 
     void ToggleRow(string title, string desc, bool cur, System.Action<bool> onChange)
@@ -361,10 +391,10 @@ public class GraphicsSettings : MonoBehaviour
         var go = RowBG(ROW_H);
         bool state = cur;
 
-        Txt(go.transform, title, -(W/2f)+PAD*2, -14f, W*0.6f, 26f,
-            15, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
-        Txt(go.transform, desc, -(W/2f)+PAD*2, -38f, W*0.6f, 20f,
-            11, FontStyle.Normal, C_DESC, TextAnchor.MiddleLeft);
+        Txt(go.transform, title, -(W/2f)+PAD*2, -18f, W*0.6f, 30f,
+            FS_TITLE, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
+        Txt(go.transform, desc, -(W/2f)+PAD*2, -48f, W*0.6f, 24f,
+            FS_DESC, FontStyle.Normal, C_DESC, TextAnchor.MiddleLeft);
 
         var tog = NewGO("Tog", go.transform);
         var tRT = RT(tog);
@@ -377,7 +407,7 @@ public class GraphicsSettings : MonoBehaviour
         togImg.sprite = RoundSprite(10);
 
         var lbl = TxtComp(tog.transform,
-            state?"✔  ON":"✘  OFF", 14, FontStyle.Bold,
+            state?"✔  ON":"✘  OFF", FS_VAL, FontStyle.Bold,
             Color.white, TextAnchor.MiddleCenter, stretch:true);
 
         var btn = tog.AddComponent<Button>();
@@ -545,14 +575,23 @@ public class GraphicsSettings : MonoBehaviour
     }
 
     void Btn(Transform p, string lbl, float x, float y, float w, float h,
-             Color col, System.Action onClick, int size=16)
+             Color col, System.Action onClick, int size=16, bool anchorRight=false)
     {
         var go = NewGO("Btn", p);
         var rt = RT(go);
-        rt.anchorMin=rt.anchorMax=new Vector2(0.5f,0.5f);
-        rt.pivot=new Vector2(0.5f,0.5f);
-        rt.anchoredPosition=new Vector2(x,y); rt.sizeDelta=new Vector2(w,h);
-        var img=go.AddComponent<Image>(); img.color=col; img.sprite=RoundSprite(8); img.type=Image.Type.Sliced;
+        if (anchorRight)
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 0.5f);
+            rt.pivot = new Vector2(1f, 0.5f);
+        }
+        else
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+        }
+        rt.anchoredPosition = new Vector2(x, y);
+        rt.sizeDelta = new Vector2(w, h);
+        var img = go.AddComponent<Image>(); img.color=col; img.sprite=RoundSprite(8); img.type=Image.Type.Sliced;
         TxtComp(go.transform,lbl,size,FontStyle.Bold,Color.white,TextAnchor.MiddleCenter,stretch:true);
         var btn=go.AddComponent<Button>(); btn.onClick.AddListener(()=>onClick?.Invoke());
         var cb=btn.colors;
