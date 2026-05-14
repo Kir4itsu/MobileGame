@@ -14,7 +14,7 @@
 
 This game can be played directly in your browser — no download required! Works on **PC** and **Mobile** browsers. Chrome is recommended for the best experience.
 
-> **Note:** Multiplayer features require a stable internet connection. For the best performance, use the Android APK version.
+> **Note:** This is a single-player game. There are no multiplayer features.
 
 [![Notes](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Notes&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu/MobileGame)
 
