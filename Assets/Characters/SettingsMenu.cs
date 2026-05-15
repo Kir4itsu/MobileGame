@@ -23,6 +23,11 @@ public class SettingsMenu : MonoBehaviour
     private GameObject      _pauseButton;   // tombol hamburger ≡
     private Text            _editModeHint;
     private Text            _resizeTargetLabel; // label nama tombol yang sedang dipilih untuk resize
+    // Rect tombol edit mode — didaftarkan ke FloatingJoystick agar drag tidak menyerobot
+    private RectTransform   _rtBtnMinus;
+    private RectTransform   _rtBtnPlus;
+    private RectTransform   _rtBtnReset;
+    private RectTransform   _rtBtnSelesai;
 
 
     // Warna
@@ -277,7 +282,7 @@ public class SettingsMenu : MonoBehaviour
         // Background semi-transparan — raycastTarget = false agar tidak block klik tombol
         Image overlayImg         = _editModeOverlay.AddComponent<Image>();
         overlayImg.color         = new Color(0f, 0f, 0f, 0.3f);
-        overlayImg.raycastTarget = false;
+        overlayImg.raycastTarget = false; // sudah benar, pastikan tetap false
 
         // Hint text atas
         GameObject hintGO = new GameObject("HintText");
@@ -309,6 +314,7 @@ public class SettingsMenu : MonoBehaviour
         Image resizePanelImg  = resizePanelGO.AddComponent<Image>();
         resizePanelImg.color  = new Color(0.08f, 0.08f, 0.08f, 0.85f);
         resizePanelImg.sprite = CreateRoundedSprite();
+        resizePanelImg.raycastTarget = false; // FIX: jangan block klik tombol +/- di atasnya
 
         // Label "↺ Reset" kecil di pojok kanan atas panel resize
         AddLabelAt(resizePanelGO.transform, "Ukuran Tombol", 18,
@@ -316,7 +322,7 @@ public class SettingsMenu : MonoBehaviour
             new Vector2(0f, -18f), new Vector2(300f, 28f));
 
         // Tombol – (kecilkan tombol yang dipilih)
-        CreateMenuButton(
+        _rtBtnMinus = CreateMenuButton(
             resizePanelGO.transform,
             "－",
             new Vector2(-85f, -65f),
@@ -345,7 +351,7 @@ public class SettingsMenu : MonoBehaviour
         _resizeTargetLabel.raycastTarget = false;
 
         // Tombol + (besarkan tombol yang dipilih)
-        CreateMenuButton(
+        _rtBtnPlus = CreateMenuButton(
             resizePanelGO.transform,
             "＋",
             new Vector2(85f, -65f),
@@ -356,7 +362,7 @@ public class SettingsMenu : MonoBehaviour
         );
 
         // ── Tombol Reset Layout ─────────────────
-        CreateMenuButton(
+        _rtBtnReset = CreateMenuButton(
             _editModeOverlay.transform,
             "↺ Reset",
             new Vector2(0f, 130f + 110f),  // di atas resize panel
@@ -367,7 +373,7 @@ public class SettingsMenu : MonoBehaviour
         );
 
         // ── Tombol Selesai & Simpan (paling bawah, mudah dijangkau) ──
-        CreateMenuButton(
+        _rtBtnSelesai = CreateMenuButton(
             _editModeOverlay.transform,
             "✔ Selesai & Simpan",
             new Vector2(0f, 50f),
@@ -432,19 +438,34 @@ public class SettingsMenu : MonoBehaviour
         FloatingJoystick.Instance?.SetEditMode(true);
         Time.timeScale = 1f;
 
-        // FIX: aktifkan raycaster SettingsCanvas agar tombol edit mode
-        // (Selesai & Simpan, Reset, +/-) bisa diklik meski settings panel sudah tutup
+        // FIX: aktifkan raycaster SettingsCanvas agar tombol edit mode bisa diklik
         _raycaster.enabled = true;
+
+        // Daftarkan tombol edit mode ke FloatingJoystick agar drag logic
+        // tidak menyerobot touch yang mengenai tombol ini di Android build
+        if (FloatingJoystick.Instance != null)
+        {
+            FloatingJoystick.Instance.ClearProtectedRects();
+            FloatingJoystick.Instance.RegisterProtectedRect(_rtBtnMinus);
+            FloatingJoystick.Instance.RegisterProtectedRect(_rtBtnPlus);
+            FloatingJoystick.Instance.RegisterProtectedRect(_rtBtnReset);
+            FloatingJoystick.Instance.RegisterProtectedRect(_rtBtnSelesai);
+        }
     }
 
     void StopEditMode()
     {
         _isEditMode = false;
         _editModeOverlay.SetActive(false);
+
+        // Bersihkan protected rects sebelum keluar edit mode
+        FloatingJoystick.Instance?.ClearProtectedRects();
+
+        // SetEditMode(false) DULU, BARU SaveLayout
         FloatingJoystick.Instance?.SetEditMode(false);
         FloatingJoystick.Instance?.SaveLayout();
 
-        // FIX: matikan kembali raycaster setelah edit mode selesai
+        // Matikan raycaster TERAKHIR
         _raycaster.enabled = false;
         Debug.Log("[SettingsMenu] Layout tombol disimpan!");
     }
@@ -546,7 +567,7 @@ public class SettingsMenu : MonoBehaviour
         txt.alignment = TextAnchor.MiddleCenter;
     }
 
-    void CreateMenuButton(Transform parent, string label, Vector2 anchoredPos,
+    RectTransform CreateMenuButton(Transform parent, string label, Vector2 anchoredPos,
                           Vector2 size, Color color, System.Action onClick,
                           Vector2? anchor = null)
     {
@@ -576,6 +597,8 @@ public class SettingsMenu : MonoBehaviour
         cb.highlightedColor = new Color(color.r + 0.1f, color.g + 0.1f, color.b + 0.1f, color.a);
         cb.pressedColor     = new Color(color.r - 0.1f, color.g - 0.1f, color.b - 0.1f, color.a);
         btn.colors = cb;
+
+        return rt;
     }
 
     void AddLabel(Transform parent, string text, int fontSize, Color color)

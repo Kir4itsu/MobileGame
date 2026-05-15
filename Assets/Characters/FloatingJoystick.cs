@@ -41,7 +41,28 @@ public class FloatingJoystick : MonoBehaviour
     public float CameraX         { get; private set; }
     public float CameraY         { get; private set; }
     public bool  SprintHeld      { get; private set; }
+    // InteractPressed: true hanya pada frame saat tombol ditekan,
+    // DAN hanya bisa dikonsumsi SATU KALI per tap (ConsumeInteract).
+    // Ini mencegah NPCInteractable dan DialogueManager keduanya baca di frame yang sama.
     public bool  InteractPressed { get; private set; }
+
+    // Frame terakhir InteractPressed di-set true
+    private int _interactFrame = -1;
+
+    /// <summary>
+    /// Konsumsi InteractPressed — setelah dipanggil, InteractPressed jadi false
+    /// sampai tap berikutnya. Pakai ini di NPCInteractable dan DialogueManager.
+    /// </summary>
+    public bool ConsumeInteract()
+    {
+        if (InteractPressed && _interactFrame == Time.frameCount)
+        {
+            InteractPressed = false;
+            _interactFrame  = -1;
+            return true;
+        }
+        return false;
+    }
 
     // ── UI refs ───────────────────────────────────
     private RectTransform    _background;
@@ -62,8 +83,7 @@ public class FloatingJoystick : MonoBehaviour
     private bool    _mouseCameraActive   = false;
     private Vector2 _mouseCameraLast;
 
-    // ── Interact consume ─────────────────────────
-    private bool _interactConsumed = false;
+    // (interact consume sekarang pakai _interactFrame — lihat ConsumeInteract())
 
     // ── Edit mode ────────────────────────────────
     private bool          _isEditMode      = false;
@@ -129,10 +149,11 @@ public class FloatingJoystick : MonoBehaviour
     // ─────────────────────────────────────────────
     void Update()
     {
-        if (_interactConsumed)
+        // Reset InteractPressed setelah 1 frame (jika belum dikonsumsi via ConsumeInteract)
+        if (InteractPressed && _interactFrame != Time.frameCount)
         {
-            InteractPressed   = false;
-            _interactConsumed = false;
+            InteractPressed = false;
+            _interactFrame  = -1;
         }
 
         switch (_inputMode)
@@ -368,6 +389,12 @@ public class FloatingJoystick : MonoBehaviour
         {
             foreach (Touch touch in Input.touches)
             {
+                // ── PENTING: jangan ambil touch yang mengenai UI eksternal ──
+                // Ini agar tombol +/-, Reset, dan "Selesai & Simpan" di SettingsCanvas
+                // bisa diklik tanpa diserobot logika drag/resize kita.
+                if (touch.phase == TouchPhase.Began && IsTouchOverExternalUI(touch.position))
+                    continue;
+
                 // ── Resize (finger baru setelah drag sudah ada) ──
                 if (touch.phase == TouchPhase.Began && _resizeFingerId == -1 && _draggingRT != null)
                 {
@@ -597,8 +624,8 @@ public class FloatingJoystick : MonoBehaviour
         _rtInteract = CreateButtonWithRT(canvasGO.transform, "InteractButton", "INTERACT",
             _defInteract, new Vector2(1f, 0f),
             new Color(0.1f, 0.85f, 0.3f, 0.5f), size: 110f,
-            onDown: () => { InteractPressed = true; _interactConsumed = false; },
-            onUp:   () => { _interactConsumed = true; });
+            onDown: () => { InteractPressed = true; _interactFrame = Time.frameCount; },
+            onUp:   () => { /* tidak perlu reset, ConsumeInteract() yang handle */ });
 
         // ── Tombol VIEW (TPP/FPP) ─────────────────
         GameObject viewGO = CreateButtonGO(canvasGO.transform, "ViewToggleButton", "TPP",
@@ -628,21 +655,23 @@ public class FloatingJoystick : MonoBehaviour
         Debug.Log($"[FloatingJoystick] UI siap. InputMode={_inputMode}");
     }
 
-    // ── Buat resize handle (sudut kanan bawah tiap tombol) ──
+    // ── Buat resize handle (sudut KIRI ATAS tiap tombol) ──
+    // Diposisikan di luar tombol agar tidak tertimpa area drag tombol itu sendiri.
+    // Hit area diperbesar jadi 48x48 agar mudah disentuh di layar kecil.
     GameObject CreateResizeHandle(RectTransform parent)
     {
         GameObject go = new GameObject("ResizeHandle");
         go.transform.SetParent(parent, false);
 
         RectTransform rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta        = new Vector2(32f, 32f);
-        rt.anchorMin        = new Vector2(1f, 0f);
-        rt.anchorMax        = new Vector2(1f, 0f);
-        rt.pivot            = new Vector2(1f, 0f);
-        rt.anchoredPosition = new Vector2(4f, -4f);
+        rt.sizeDelta        = new Vector2(48f, 48f);   // lebih besar = lebih mudah disentuh
+        rt.anchorMin        = new Vector2(0f, 1f);     // pojok KIRI ATAS
+        rt.anchorMax        = new Vector2(0f, 1f);
+        rt.pivot            = new Vector2(0f, 1f);
+        rt.anchoredPosition = new Vector2(-4f, 4f);    // sedikit keluar dari tepi
 
         Image img  = go.AddComponent<Image>();
-        img.color  = new Color(1f, 1f, 0.2f, 0.9f);
+        img.color  = new Color(1f, 0.85f, 0f, 0.95f); // kuning mencolok
         img.sprite = CreateResizeHandleSprite();
         img.raycastTarget = true;
 
@@ -1005,6 +1034,35 @@ public class FloatingJoystick : MonoBehaviour
                 return rt;
         }
         return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  Daftar RectTransform tombol eksternal yang dilindungi dari drag logic.
+    //  Diisi oleh SettingsMenu.StartEditMode via RegisterProtectedRect().
+    // ─────────────────────────────────────────────────────────────────
+    private System.Collections.Generic.List<RectTransform> _protectedRects
+        = new System.Collections.Generic.List<RectTransform>();
+
+    public void RegisterProtectedRect(RectTransform rt)
+    {
+        if (rt != null && !_protectedRects.Contains(rt))
+            _protectedRects.Add(rt);
+    }
+
+    public void ClearProtectedRects()
+    {
+        _protectedRects.Clear();
+    }
+
+    bool IsTouchOverExternalUI(Vector2 screenPos)
+    {
+        foreach (var rt in _protectedRects)
+        {
+            if (rt == null) continue;
+            if (RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
+                return true;
+        }
+        return false;
     }
 
     Vector2 GetScreenCenter(RectTransform rt)
