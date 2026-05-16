@@ -193,7 +193,8 @@ public class DialogueManager : MonoBehaviour
         _tapToContinueOverlay.transition = Selectable.Transition.None;
         _tapToContinueOverlay.onClick.AddListener(OnTapToContinue);
 
-        overlayGO.transform.SetSiblingIndex(dialoguePanel.transform.GetSiblingIndex());
+        // Harus di atas semua UI — taruh di index paling akhir
+        overlayGO.transform.SetAsLastSibling();
 
         if (enableDebugLogs) Debug.Log("✅ DialogueManager: TapToContinue overlay built");
     }
@@ -266,6 +267,21 @@ public class DialogueManager : MonoBehaviour
                       || (_inputCooldown <= 0f
                           && FloatingJoystick.Instance != null
                           && FloatingJoystick.Instance.ConsumeInteract());
+
+        // ── Android fallback: tap layar langsung (jika overlay button tidak tertangkap) ──
+        #if UNITY_ANDROID && !UNITY_EDITOR
+        if (!nextInput && _inputCooldown <= 0f)
+        {
+            foreach (Touch t in Input.touches)
+            {
+                if (t.phase == TouchPhase.Began)
+                {
+                    nextInput = true;
+                    break;
+                }
+            }
+        }
+        #endif
 
         if (nextInput)
         {
