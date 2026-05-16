@@ -37,6 +37,7 @@ public class MinimapSystem : MonoBehaviour
     private Camera        _minimapCam;
     private RenderTexture _renderTex;
     private Transform     _playerTransform;
+    private Transform     _trackedTarget;   // target aktif (player atau mobil)
     private Canvas        _canvas;
     private RawImage      _mapImage;
     private GameObject    _playerDot;
@@ -77,12 +78,35 @@ public class MinimapSystem : MonoBehaviour
         if (player != null)
         {
             _playerTransform = player.transform;
+            _trackedTarget   = player.transform; // default track player
             Debug.Log("[Minimap] Player ditemukan: " + player.name);
         }
         else
         {
             Debug.LogWarning("[Minimap] Player tidak ditemukan! Pastikan tag player = 'Player'");
         }
+    }
+
+    // ──────────────────────────────────────────────
+    //  PUBLIC API — dipanggil dari VehicleEntry
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Saat masuk mobil: minimap track transform mobil, bukan player.
+    /// Panggil dari VehicleEntry.TryEnter()
+    /// </summary>
+    public void SetTrackedTarget(Transform target)
+    {
+        _trackedTarget = target != null ? target : _playerTransform;
+    }
+
+    /// <summary>
+    /// Saat keluar mobil: kembalikan tracking ke player.
+    /// Panggil dari VehicleEntry.TryExit()
+    /// </summary>
+    public void ResetTrackedTarget()
+    {
+        _trackedTarget = _playerTransform;
     }
 
     // ──────────────────────────────────────────────
@@ -102,19 +126,15 @@ public class MinimapSystem : MonoBehaviour
         _minimapCam = camGO.AddComponent<Camera>();
         _minimapCam.orthographic     = true;
         _minimapCam.orthographicSize = cameraViewSize;
-        // nearClipPlane di-update tiap frame di LateUpdate sesuai posisi Y player.
-        // Nilai awal: cameraHeight - clipAbovePlayer supaya langsung clip dari atas player.
         _minimapCam.nearClipPlane    = Mathf.Max(0.01f, cameraHeight - clipAbovePlayer);
         _minimapCam.farClipPlane     = cameraHeight + 50f;
         _minimapCam.targetTexture    = _renderTex;
         _minimapCam.clearFlags       = CameraClearFlags.SolidColor;
-        _minimapCam.backgroundColor  = new Color(0.1f, 0.15f, 0.1f, 1f); // warna bg peta
-        _minimapCam.cullingMask      = ~0; // render semua layer
+        _minimapCam.backgroundColor  = new Color(0.1f, 0.15f, 0.1f, 1f);
+        _minimapCam.cullingMask      = ~0;
 
-        // Kamera ngarah ke bawah
         camGO.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
-        // Posisi awal
         if (_playerTransform != null)
             camGO.transform.position = _playerTransform.position + Vector3.up * cameraHeight;
     }
@@ -130,7 +150,7 @@ public class MinimapSystem : MonoBehaviour
 
         _canvas = canvasGO.AddComponent<Canvas>();
         _canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 998; // di bawah settings (999), di atas game
+        _canvas.sortingOrder = 998;
 
         CanvasScaler cs = canvasGO.AddComponent<CanvasScaler>();
         cs.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
@@ -141,7 +161,7 @@ public class MinimapSystem : MonoBehaviour
         _panelGO.transform.SetParent(canvasGO.transform, false);
 
         RectTransform panelRT = _panelGO.AddComponent<RectTransform>();
-        panelRT.anchorMin        = new Vector2(0f, 1f); // kiri atas
+        panelRT.anchorMin        = new Vector2(0f, 1f);
         panelRT.anchorMax        = new Vector2(0f, 1f);
         panelRT.pivot            = new Vector2(0f, 1f);
         panelRT.anchoredPosition = new Vector2(screenOffset.x, -screenOffset.y);
@@ -164,10 +184,9 @@ public class MinimapSystem : MonoBehaviour
         Image borderImg   = borderGO.AddComponent<Image>();
         borderImg.color   = borderColor;
         borderImg.sprite  = CreateCircleSprite(256);
-        borderGO.transform.SetAsFirstSibling(); // taruh di belakang
+        borderGO.transform.SetAsFirstSibling();
 
         // ── Mask container (lingkaran) ────────────
-        // Mask HARUS di parent terpisah dari RawImage
         GameObject maskGO = new GameObject("MapMask");
         maskGO.transform.SetParent(_panelGO.transform, false);
 
@@ -182,11 +201,11 @@ public class MinimapSystem : MonoBehaviour
         maskImg.color    = Color.white;
 
         UnityEngine.UI.Mask mask = maskGO.AddComponent<UnityEngine.UI.Mask>();
-        mask.showMaskGraphic = false; // sembunyikan sprite mask-nya
+        mask.showMaskGraphic = false;
 
         // ── RawImage di dalam Mask ────────────────
         GameObject rawGO = new GameObject("MapView");
-        rawGO.transform.SetParent(maskGO.transform, false); // parent ke maskGO, bukan _panelGO!
+        rawGO.transform.SetParent(maskGO.transform, false);
 
         RectTransform rawRT = rawGO.AddComponent<RectTransform>();
         rawRT.anchorMin = Vector2.zero;
@@ -230,7 +249,6 @@ public class MinimapSystem : MonoBehaviour
         CreateCompassLabel(canvasGO.transform, panelRT);
 
         // ── Label nama minimap ────────────────────
-        // FIX: parent ke _panelGO bukan canvasGO, supaya ikut hide saat HideMinimap()
         GameObject labelGO = new GameObject("MinimapLabel");
         labelGO.transform.SetParent(_panelGO.transform, false);
 
@@ -252,12 +270,10 @@ public class MinimapSystem : MonoBehaviour
 
     void CreateCompassLabel(Transform canvasParent, RectTransform panelRT)
     {
-        // N di atas
         CreateDirLabel(canvasParent, "N", new Vector2(0f, -borderThickness - 18f),
             new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            new Color(1f, 0.3f, 0.3f, 1f)); // merah
+            new Color(1f, 0.3f, 0.3f, 1f));
 
-        // Label lain (opsional, abu-abu)
         CreateDirLabel(canvasParent, "S", new Vector2(0f,  borderThickness + 18f),
             new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
             new Color(0.6f, 0.6f, 0.6f, 0.7f));
@@ -292,7 +308,7 @@ public class MinimapSystem : MonoBehaviour
     }
 
     // ──────────────────────────────────────────────
-    //  UPDATE — follow player, utara selalu atas
+    //  UPDATE — follow target, utara selalu atas
     // ──────────────────────────────────────────────
     void LateUpdate()
     {
@@ -302,37 +318,34 @@ public class MinimapSystem : MonoBehaviour
         if (_playerTransform == null)
         {
             GameObject p = GameObject.FindGameObjectWithTag("Player");
-            if (p != null) _playerTransform = p.transform;
-            else return; // belum ada player, skip
+            if (p != null)
+            {
+                _playerTransform = p.transform;
+                _trackedTarget   = p.transform;
+            }
+            else return;
         }
 
-        // ── Update kamera minimap ─────────────────
-        float playerY = _playerTransform.position.y;
+        // Gunakan _trackedTarget (mobil saat driving, player saat jalan kaki)
+        Transform target = _trackedTarget != null ? _trackedTarget : _playerTransform;
 
-        // Kamera follow player dari atas, rotasi fixed (utara = Z+)
+        // ── Update kamera minimap ─────────────────
         _minimapCam.transform.position = new Vector3(
-            _playerTransform.position.x,
-            playerY + cameraHeight,
-            _playerTransform.position.z
+            target.position.x,
+            target.position.y + cameraHeight,
+            target.position.z
         );
 
-        // Utara selalu atas — tidak ikut rotasi player
         _minimapCam.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
         // ── Near clip dinamis per lantai ──────────
-        // Kamera orthographic menghadap ke bawah.
-        // nearClipPlane = jarak dari posisi kamera ke bidang clip terdekat.
-        // Kita mau clip semua objek yang ada di atas (playerY + clipAbovePlayer).
-        // Jarak dari kamera (playerY + cameraHeight) ke titik clip atas =
-        //   cameraHeight - clipAbovePlayer
-        // Sehingga hanya lantai di bawah player + clipAbovePlayer yang ke-render.
         _minimapCam.nearClipPlane = Mathf.Max(0.01f, cameraHeight - clipAbovePlayer);
 
-        // Arrow player rotate sesuai arah hadap karakter
+        // Arrow ikut rotasi target (player atau mobil)
         if (_playerDot != null)
         {
-            float playerAngle = _playerTransform.eulerAngles.y;
-            _playerDot.transform.localRotation = Quaternion.Euler(0f, 0f, -playerAngle);
+            float angle = target.eulerAngles.y;
+            _playerDot.transform.localRotation = Quaternion.Euler(0f, 0f, -angle);
         }
     }
 
@@ -349,11 +362,6 @@ public class MinimapSystem : MonoBehaviour
         if (_panelGO != null) _panelGO.SetActive(!_panelGO.activeSelf);
     }
 
-    // ──────────────────────────────────────────────
-    //  SPRITE GENERATORS
-    // ──────────────────────────────────────────────
-    //  SHOW / HIDE
-    // ──────────────────────────────────────────────
     public void HideMinimap()
     {
         if (_panelGO != null) _panelGO.SetActive(false);
@@ -364,6 +372,8 @@ public class MinimapSystem : MonoBehaviour
         if (_panelGO != null) _panelGO.SetActive(true);
     }
 
+    // ──────────────────────────────────────────────
+    //  SPRITE GENERATORS
     // ──────────────────────────────────────────────
     Sprite CreateCircleSprite(int res)
     {
@@ -390,17 +400,15 @@ public class MinimapSystem : MonoBehaviour
         Texture2D tex  = new Texture2D(res, res, TextureFormat.RGBA32, false);
         tex.filterMode = FilterMode.Bilinear;
 
-        // Isi transparan dulu
         for (int y = 0; y < res; y++)
         for (int x = 0; x < res; x++)
             tex.SetPixel(x, y, Color.clear);
 
-        // Gambar segitiga mengarah ke atas
         for (int y = 0; y < res; y++)
         for (int x = 0; x < res; x++)
         {
             float cx     = res / 2f;
-            float halfW  = (float)y / res * (res / 2f); // makin ke atas makin sempit
+            float halfW  = (float)y / res * (res / 2f);
             if (Mathf.Abs(x - cx) <= halfW)
                 tex.SetPixel(x, res - 1 - y, new Color(1f, 1f, 1f, 1f));
         }

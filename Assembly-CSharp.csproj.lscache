@@ -54,12 +54,15 @@ Assets/Characters/
  AutoAddColliders.cs
  AutoStaticBatching.cs
  CameraController.cs
+ Drivebuttonui.cs
  FloatingJoystick.cs
  GraphicsSettings.cs
  MinimapSystem.cs
  PlayerMovement.cs
  PlayerNameTag.cs
  SettingsMenu.cs
+ Vehiclecontroller.cs
+ Vehicleentry.cs
 Assets/
  Dialogueuibuilder.cs
  Photon/PhotonChat/Demos/Demo Chat/Code/

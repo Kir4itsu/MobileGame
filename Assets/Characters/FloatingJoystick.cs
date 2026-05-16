@@ -641,7 +641,12 @@ public class FloatingJoystick : MonoBehaviour
         yield return new WaitForSeconds(0.5f);
         _camController = FindFirstObjectByType<CameraController>();
         if (_camController != null)
+        {
             Debug.Log("[FloatingJoystick] CameraController ditemukan!");
+            // Sync label tombol dengan state kamera yang sebenarnya
+            if (_viewModeLabel != null)
+                _viewModeLabel.text = _camController.isFirstPerson ? "FPP" : "TPP";
+        }
         else
             Debug.LogWarning("[FloatingJoystick] CameraController tidak ditemukan!");
     }
@@ -653,6 +658,13 @@ public class FloatingJoystick : MonoBehaviour
         if (_camController == null) return;
 
         _camController.isFirstPerson = !_camController.isFirstPerson;
+        SyncViewLabel();
+    }
+
+    /// <summary>Sync label tombol TPP/FPP dengan state kamera saat ini.</summary>
+    public void SyncViewLabel()
+    {
+        if (_camController == null) return;
         if (_viewModeLabel != null)
             _viewModeLabel.text = _camController.isFirstPerson ? "FPP" : "TPP";
     }
