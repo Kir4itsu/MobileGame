@@ -76,6 +76,9 @@ public class CameraController : MonoBehaviour
         {
             isFirstPerson = !isFirstPerson;
             Debug.Log(isFirstPerson ? "📷 First Person Mode" : "📷 Third Person Mode");
+            // Sync label tombol di FloatingJoystick
+            if (FloatingJoystick.Instance != null)
+                FloatingJoystick.Instance.SyncViewLabel();
         }
 
         if (isFirstPerson)

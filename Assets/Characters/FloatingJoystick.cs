@@ -88,27 +88,17 @@ public class FloatingJoystick : MonoBehaviour
     // ── Edit mode ────────────────────────────────
     private bool          _isEditMode      = false;
     private RectTransform _draggingRT      = null;
-    private RectTransform _resizingRT      = null; // tombol yang sedang di-resize
     private int           _dragFingerId    = -1;
-    private int           _resizeFingerId  = -1;
     private Vector2       _dragOffset;
-    private Vector2       _resizeStartTouch;
-    private Vector2       _resizeStartSize;
 
     // ── Selected button (untuk resize per-tombol) ──
-    private RectTransform _selectedRT      = null; // tombol yang sedang dipilih untuk resize
+    private RectTransform _selectedRT      = null;
 
     // ── RectTransform tombol (untuk drag & collision) ──
     private RectTransform _rtJoystick;
     private RectTransform _rtSprint;
     private RectTransform _rtInteract;
     private RectTransform _rtViewToggle;
-
-    // ── Resize handle GameObjects (ditampilkan saat edit mode) ──
-    private GameObject _resizeHandleJoystick;
-    private GameObject _resizeHandleSprint;
-    private GameObject _resizeHandleInteract;
-    private GameObject _resizeHandleViewToggle;
 
     // ── Ukuran tombol (min/max) ───────────────────
     private const float MIN_BTN_SIZE = 60f;
@@ -139,8 +129,10 @@ public class FloatingJoystick : MonoBehaviour
         _inputMode = InputMode.NativeTouch;
         Debug.Log("[FloatingJoystick] Mode: Native Touch");
 #else
+        // Editor: gunakan NativeTouch jika Unity Remote aktif (ada touch input),
+        // fallback ke PCKeyboard jika tidak ada touch
         _inputMode = InputMode.PCKeyboard;
-        Debug.Log("[FloatingJoystick] Mode: PC/Editor");
+        Debug.Log("[FloatingJoystick] Mode: PC/Editor (akan switch ke NativeTouch jika Unity Remote aktif)");
 #endif
 
         BuildUI();
@@ -155,6 +147,20 @@ public class FloatingJoystick : MonoBehaviour
             InteractPressed = false;
             _interactFrame  = -1;
         }
+
+        // Auto-detect Unity Remote: jika di Editor dan ada touch input, pakai NativeTouch
+        #if UNITY_EDITOR
+        if (_inputMode == InputMode.PCKeyboard && Input.touchCount > 0)
+        {
+            _inputMode = InputMode.NativeTouch;
+            Debug.Log("[FloatingJoystick] Unity Remote terdeteksi! Switch ke NativeTouch mode.");
+        }
+        else if (_inputMode == InputMode.NativeTouch && Input.touchCount == 0)
+        {
+            // Kembali ke PC mode jika tidak ada touch (Unity Remote dicabut)
+            _inputMode = InputMode.PCKeyboard;
+        }
+        #endif
 
         switch (_inputMode)
         {
@@ -185,6 +191,16 @@ public class FloatingJoystick : MonoBehaviour
     // ═════════════════════════════════════════════
     void UpdateJoystickNative()
     {
+        // Jika dialogue aktif, reset joystick dan skip
+        if (DialogueManager.Instance != null && DialogueManager.Instance.IsDialogueActive())
+        {
+            _joystickFingerId        = -1;
+            Horizontal               = 0f;
+            Vertical                 = 0f;
+            _handle.anchoredPosition = Vector2.zero;
+            return;
+        }
+
         Vector2 bgCenter = GetScreenCenter(_background);
         float   maxRange = (_background.sizeDelta.x * 0.5f) - (handleSize * 0.5f);
 
@@ -222,6 +238,15 @@ public class FloatingJoystick : MonoBehaviour
     void HandleNativeCamera()
     {
         _rawCameraDelta = Vector2.zero;
+
+        // Jika dialogue aktif, jangan konsumsi touch sebagai kamera
+        // supaya DialogueManager bisa baca Input.touches untuk next line
+        if (DialogueManager.Instance != null && DialogueManager.Instance.IsDialogueActive())
+        {
+            _cameraFingerId = -1;
+            ApplyCameraSmooth();
+            return;
+        }
 
         foreach (Touch touch in Input.touches)
         {
@@ -380,63 +405,42 @@ public class FloatingJoystick : MonoBehaviour
     // ═════════════════════════════════════════════
     //  EDIT MODE DRAG + RESIZE
     // ═════════════════════════════════════════════
+    // ═════════════════════════════════════════════
+    //  EDIT MODE DRAG + TAP-TO-SELECT
+    // ═════════════════════════════════════════════
+    // Alur: tap tombol = select (highlight), lalu +/- di panel untuk resize.
+    //       drag tombol = pindah posisi.
+    //       Tidak ada segitiga kuning / pinch resize.
+    // ═════════════════════════════════════════════
     void HandleEditModeDrag()
     {
         if (!_isEditMode) return;
 
-        // Native touch drag & resize
         if (_inputMode == InputMode.NativeTouch)
         {
             foreach (Touch touch in Input.touches)
             {
-                // ── PENTING: jangan ambil touch yang mengenai UI eksternal ──
-                // Ini agar tombol +/-, Reset, dan "Selesai & Simpan" di SettingsCanvas
-                // bisa diklik tanpa diserobot logika drag/resize kita.
+                // Jangan konsumsi touch yang mengenai tombol UI eksternal (+/-, Reset, Selesai)
                 if (touch.phase == TouchPhase.Began && IsTouchOverExternalUI(touch.position))
+                {
+                    if (touch.fingerId == _dragFingerId) { _draggingRT = null; _dragFingerId = -1; }
                     continue;
-
-                // ── Resize (finger baru setelah drag sudah ada) ──
-                if (touch.phase == TouchPhase.Began && _resizeFingerId == -1 && _draggingRT != null)
-                {
-                    // Finger kedua = resize
-                    if (touch.fingerId != _dragFingerId)
-                    {
-                        _resizingRT       = _draggingRT;
-                        _resizeFingerId   = touch.fingerId;
-                        _resizeStartTouch = touch.position;
-                        _resizeStartSize  = _resizingRT.sizeDelta;
-                    }
                 }
-                // ── Drag (finger pertama) ──
-                else if (touch.phase == TouchPhase.Began && _dragFingerId == -1 && _resizeFingerId == -1)
+
+                if (touch.phase == TouchPhase.Began && _dragFingerId == -1)
                 {
-                    // Cek apakah mengenai resize handle dulu
-                    RectTransform hitHandle = GetTouchedResizeHandle(touch.position);
-                    if (hitHandle != null)
+                    RectTransform hit = GetTouchedButton(touch.position);
+                    if (hit != null)
                     {
-                        // Drag = parent dari handle
-                        _draggingRT   = (RectTransform)hitHandle.parent;
+                        _draggingRT   = hit;
                         _dragFingerId = touch.fingerId;
                         RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                            (RectTransform)_draggingRT.parent, touch.position, null, out Vector2 lp);
-                        _dragOffset = _draggingRT.anchoredPosition - lp;
-                    }
-                    else
-                    {
-                        RectTransform hit = GetTouchedButton(touch.position);
-                        if (hit != null)
-                        {
-                            _draggingRT   = hit;
-                            _dragFingerId = touch.fingerId;
-                            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                                (RectTransform)hit.parent, touch.position, null, out Vector2 lp);
-                            _dragOffset = hit.anchoredPosition - lp;
-                        }
+                            (RectTransform)hit.parent, touch.position, null, out Vector2 lp);
+                        _dragOffset = hit.anchoredPosition - lp;
                     }
                 }
 
-                // ── Apply drag ──
-                if (touch.fingerId == _dragFingerId && _draggingRT != null && _resizeFingerId == -1)
+                if (touch.fingerId == _dragFingerId && _draggingRT != null)
                 {
                     if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary)
                     {
@@ -446,28 +450,15 @@ public class FloatingJoystick : MonoBehaviour
                     }
                     else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
                     {
-                        // Jika tidak banyak bergerak = tap → set sebagai selected untuk resize
-                        float moveDist = Vector2.Distance(touch.position,
-                            _draggingRT.position + (Vector3)_dragOffset);
-                        if (moveDist < 20f)
+                        // Tap (tidak banyak gerak) = toggle select untuk resize
+                        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                            (RectTransform)_draggingRT.parent, touch.position, null, out Vector2 endLp);
+                        float moveDist = Vector2.Distance(endLp, _draggingRT.anchoredPosition - _dragOffset);
+                        if (moveDist < 15f)
                             SetSelectedButton(_draggingRT == _selectedRT ? null : _draggingRT);
 
-                        _draggingRT = null; _dragFingerId = -1;
-                    }
-                }
-
-                // ── Apply resize (pinch-drag jari kedua) ──
-                if (touch.fingerId == _resizeFingerId && _resizingRT != null)
-                {
-                    if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary)
-                    {
-                        float delta = touch.position.y - _resizeStartTouch.y;
-                        float newSize = Mathf.Clamp(_resizeStartSize.x + delta * 0.5f, MIN_BTN_SIZE, MAX_BTN_SIZE);
-                        ApplyResize(_resizingRT, newSize);
-                    }
-                    else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
-                    {
-                        _resizingRT = null; _resizeFingerId = -1;
+                        _draggingRT   = null;
+                        _dragFingerId = -1;
                     }
                 }
             }
@@ -476,17 +467,12 @@ public class FloatingJoystick : MonoBehaviour
         // WebGL + PC — mouse drag & scroll resize
         if (_inputMode == InputMode.WebGLMouse || _inputMode == InputMode.PCKeyboard)
         {
-            // Scroll wheel untuk resize tombol yang di-hover
             float scroll = Input.GetAxis("Mouse ScrollWheel");
             if (Mathf.Abs(scroll) > 0.01f)
             {
                 RectTransform hovered = GetTouchedButton(Input.mousePosition);
                 if (hovered != null)
-                {
-                    float currentSize = hovered.sizeDelta.x;
-                    float newSize = Mathf.Clamp(currentSize + scroll * 200f, MIN_BTN_SIZE, MAX_BTN_SIZE);
-                    ApplyResize(hovered, newSize);
-                }
+                    ResizeButton(hovered, scroll * 200f);
             }
 
             if (Input.GetMouseButtonDown(0) && _dragFingerId == -1)
@@ -507,18 +493,16 @@ public class FloatingJoystick : MonoBehaviour
                     (RectTransform)_draggingRT.parent, Input.mousePosition, null, out Vector2 lp);
                 _draggingRT.anchoredPosition = lp + _dragOffset;
             }
-            if (Input.GetMouseButtonUp(0))
+            if (Input.GetMouseButtonUp(0) && _draggingRT != null)
             {
-                // Jika mouse nyaris tidak bergerak = klik/tap → set selected
-                if (_draggingRT != null)
-                {
-                    RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                        (RectTransform)_draggingRT.parent, Input.mousePosition, null, out Vector2 lp);
-                    float moveDist = Vector2.Distance(lp, _draggingRT.anchoredPosition - _dragOffset);
-                    if (moveDist < 10f)
-                        SetSelectedButton(_draggingRT == _selectedRT ? null : _draggingRT);
-                }
-                _draggingRT = null; _dragFingerId = -1;
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    (RectTransform)_draggingRT.parent, Input.mousePosition, null, out Vector2 lp);
+                float moveDist = Vector2.Distance(lp, _draggingRT.anchoredPosition - _dragOffset);
+                if (moveDist < 10f)
+                    SetSelectedButton(_draggingRT == _selectedRT ? null : _draggingRT);
+
+                _draggingRT   = null;
+                _dragFingerId = -1;
             }
         }
     }
@@ -636,12 +620,6 @@ public class FloatingJoystick : MonoBehaviour
         _rtViewToggle  = viewGO.GetComponent<RectTransform>();
         _viewModeLabel = viewGO.GetComponentInChildren<Text>();
 
-        // ── Resize handles (hidden by default) ───
-        _resizeHandleJoystick   = CreateResizeHandle(_rtJoystick);
-        _resizeHandleSprint     = CreateResizeHandle(_rtSprint);
-        _resizeHandleInteract   = CreateResizeHandle(_rtInteract);
-        _resizeHandleViewToggle = CreateResizeHandle(_rtViewToggle);
-
         // Hapus layout ViewToggle lama kalau y negatif (sisa anchor lama)
         if (PlayerPrefs.HasKey("view_y") && PlayerPrefs.GetFloat("view_y") < 0f)
         {
@@ -655,50 +633,6 @@ public class FloatingJoystick : MonoBehaviour
         Debug.Log($"[FloatingJoystick] UI siap. InputMode={_inputMode}");
     }
 
-    // ── Buat resize handle (sudut KIRI ATAS tiap tombol) ──
-    // Diposisikan di luar tombol agar tidak tertimpa area drag tombol itu sendiri.
-    // Hit area diperbesar jadi 48x48 agar mudah disentuh di layar kecil.
-    GameObject CreateResizeHandle(RectTransform parent)
-    {
-        GameObject go = new GameObject("ResizeHandle");
-        go.transform.SetParent(parent, false);
-
-        RectTransform rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta        = new Vector2(48f, 48f);   // lebih besar = lebih mudah disentuh
-        rt.anchorMin        = new Vector2(0f, 1f);     // pojok KIRI ATAS
-        rt.anchorMax        = new Vector2(0f, 1f);
-        rt.pivot            = new Vector2(0f, 1f);
-        rt.anchoredPosition = new Vector2(-4f, 4f);    // sedikit keluar dari tepi
-
-        Image img  = go.AddComponent<Image>();
-        img.color  = new Color(1f, 0.85f, 0f, 0.95f); // kuning mencolok
-        img.sprite = CreateResizeHandleSprite();
-        img.raycastTarget = true;
-
-        go.SetActive(false); // hidden by default
-        return go;
-    }
-
-    // ── Sprite ikon resize (panah diagonal) ──
-    Sprite CreateResizeHandleSprite()
-    {
-        int res       = 32;
-        Texture2D tex = new Texture2D(res, res, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-
-        for (int y = 0; y < res; y++)
-        for (int x = 0; x < res; x++)
-        {
-            // Segitiga kanan bawah
-            bool inTriangle = (x + y >= res - 4);
-            tex.SetPixel(x, y, inTriangle
-                ? new Color(1f, 1f, 1f, 1f)
-                : new Color(0f, 0f, 0f, 0f));
-        }
-        tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, res, res), new Vector2(0.5f, 0.5f), res);
-    }
-
     // ═════════════════════════════════════════════
     //  VIEW MODE
     // ═════════════════════════════════════════════
@@ -707,7 +641,12 @@ public class FloatingJoystick : MonoBehaviour
         yield return new WaitForSeconds(0.5f);
         _camController = FindFirstObjectByType<CameraController>();
         if (_camController != null)
+        {
             Debug.Log("[FloatingJoystick] CameraController ditemukan!");
+            // Sync label tombol dengan state kamera yang sebenarnya
+            if (_viewModeLabel != null)
+                _viewModeLabel.text = _camController.isFirstPerson ? "FPP" : "TPP";
+        }
         else
             Debug.LogWarning("[FloatingJoystick] CameraController tidak ditemukan!");
     }
@@ -719,6 +658,13 @@ public class FloatingJoystick : MonoBehaviour
         if (_camController == null) return;
 
         _camController.isFirstPerson = !_camController.isFirstPerson;
+        SyncViewLabel();
+    }
+
+    /// <summary>Sync label tombol TPP/FPP dengan state kamera saat ini.</summary>
+    public void SyncViewLabel()
+    {
+        if (_camController == null) return;
         if (_viewModeLabel != null)
             _viewModeLabel.text = _camController.isFirstPerson ? "FPP" : "TPP";
     }
@@ -730,15 +676,13 @@ public class FloatingJoystick : MonoBehaviour
     {
         _isEditMode   = enabled;
         _draggingRT   = null;
-        _resizingRT   = null;
-        _dragFingerId    = -1;
-        _resizeFingerId  = -1;
+        _dragFingerId = -1;
 
         // Reset selected button saat keluar edit mode
         if (!enabled) SetSelectedButton(null);
 
-        // FIX UTAMA: matikan raycaster joystick canvas saat edit mode
-        // agar klik tombol "Selesai & Simpan" di SettingsCanvas (sortingOrder 1000) tidak diblok
+        // Matikan raycaster joystick canvas saat edit mode
+        // agar tombol "Selesai & Simpan" di SettingsCanvas tidak diblok
         if (_canvasRaycaster != null)
             _canvasRaycaster.enabled = !enabled;
 
@@ -746,12 +690,6 @@ public class FloatingJoystick : MonoBehaviour
         SetButtonHighlight(_rtInteract,   enabled);
         SetButtonHighlight(_rtViewToggle, enabled);
         SetButtonHighlight(_rtJoystick,   enabled);
-
-        // Tampilkan/sembunyikan resize handles
-        SetResizeHandleVisible(_resizeHandleJoystick,   enabled);
-        SetResizeHandleVisible(_resizeHandleSprint,     enabled);
-        SetResizeHandleVisible(_resizeHandleInteract,   enabled);
-        SetResizeHandleVisible(_resizeHandleViewToggle, enabled);
     }
 
     void SetButtonHighlight(RectTransform rt, bool on)
@@ -776,11 +714,6 @@ public class FloatingJoystick : MonoBehaviour
             Mathf.Min(c.g + 0.3f, 1f),
             Mathf.Min(c.b + 0.3f, 1f),
             1f);
-    }
-
-    void SetResizeHandleVisible(GameObject handle, bool visible)
-    {
-        if (handle != null) handle.SetActive(visible);
     }
 
     // ═════════════════════════════════════════════
@@ -1023,19 +956,6 @@ public class FloatingJoystick : MonoBehaviour
         return null;
     }
 
-    RectTransform GetTouchedResizeHandle(Vector2 screenPos)
-    {
-        GameObject[] handles = { _resizeHandleJoystick, _resizeHandleSprint, _resizeHandleInteract, _resizeHandleViewToggle };
-        foreach (var h in handles)
-        {
-            if (h == null || !h.activeSelf) continue;
-            RectTransform rt = h.GetComponent<RectTransform>();
-            if (rt != null && RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
-                return rt;
-        }
-        return null;
-    }
-
     // ─────────────────────────────────────────────────────────────────
     //  Daftar RectTransform tombol eksternal yang dilindungi dari drag logic.
     //  Diisi oleh SettingsMenu.StartEditMode via RegisterProtectedRect().
@@ -1058,8 +978,22 @@ public class FloatingJoystick : MonoBehaviour
     {
         foreach (var rt in _protectedRects)
         {
-            if (rt == null) continue;
-            if (RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
+            if (rt == null || !rt.gameObject.activeInHierarchy) continue;
+
+            // GetWorldCorners lebih reliable di Android multi-canvas
+            // dibanding RectangleContainsScreenPoint dengan camera=null
+            Vector3[] corners = new Vector3[4];
+            rt.GetWorldCorners(corners);
+
+            float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+            float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+            float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+            float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+
+            // Padding 10px agar tap di pinggir tombol tetap terdeteksi
+            float pad = 10f;
+            if (screenPos.x >= minX - pad && screenPos.x <= maxX + pad &&
+                screenPos.y >= minY - pad && screenPos.y <= maxY + pad)
                 return true;
         }
         return false;

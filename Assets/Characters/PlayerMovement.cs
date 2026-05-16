@@ -28,6 +28,9 @@ public class PlayerMovement : MonoBehaviourPun
     private bool isGrounded;
     private bool isMobileSprinting = false;
 
+    // Helper: true jika ini player milik kita (atau offline/editor mode)
+    bool IsLocalPlayer => photonView.IsMine || !Photon.Pun.PhotonNetwork.IsConnected;
+
     void Start()
     {
         controller = GetComponent<CharacterController>();
@@ -37,7 +40,7 @@ public class PlayerMovement : MonoBehaviourPun
         if (animator == null)
             animator = GetComponent<Animator>();
 
-        if (photonView.IsMine)
+        if (IsLocalPlayer)
         {
             SetupCamera();
             SetupSprintButton();
@@ -53,7 +56,7 @@ public class PlayerMovement : MonoBehaviourPun
                 controller.enabled = false;
 
             gameObject.tag = "OtherPlayer";
-            Debug.Log($"[PlayerMovement] Remote player spawned. ViewID: {photonView.ViewID}, Owner: {photonView.Owner.NickName}");
+            Debug.Log($"[PlayerMovement] Remote player spawned. ViewID: {photonView.ViewID}, Owner: {photonView.Owner?.NickName}");
         }
     }
 
@@ -128,7 +131,7 @@ public class PlayerMovement : MonoBehaviourPun
     // ─────────────────────────────────────────────
     void Update()
     {
-        if (!photonView.IsMine) return;
+        if (!IsLocalPlayer) return;
 
         // ── Input ─────────────────────────────────
         float h = Input.GetAxis("Horizontal");
@@ -257,23 +260,23 @@ public class PlayerMovement : MonoBehaviourPun
     // ─────────────────────────────────────────────
     public void SetFirstPersonVisibility(bool visible)
     {
-        if (!photonView.IsMine) return;
+        if (!IsLocalPlayer) return;
         foreach (Renderer r in GetComponentsInChildren<Renderer>())
             r.enabled = visible;
     }
 
     void OnGUI()
     {
-        if (!photonView.IsMine) return;
+        if (!IsLocalPlayer) return;
         if (Input.GetKey(KeyCode.F1))
         {
             GUILayout.BeginArea(new Rect(10, 10, 300, 200));
             GUILayout.Label($"ViewID: {photonView.ViewID}");
-            GUILayout.Label($"Owner: {photonView.Owner.NickName}");
+            GUILayout.Label($"Owner: {(photonView.Owner != null ? photonView.Owner.NickName : "Offline")}");
             GUILayout.Label($"IsMine: {photonView.IsMine}");
             GUILayout.Label($"Position: {transform.position}");
             GUILayout.Label($"Grounded: {isGrounded}");
-            GUILayout.Label($"Players in Room: {PhotonNetwork.CurrentRoom.PlayerCount}");
+            GUILayout.Label($"Players in Room: {(PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.PlayerCount.ToString() : "Offline")}");
             GUILayout.Label($"Joystick: {(FloatingJoystick.Instance != null ? "Connected" : "Not Found")}");
             GUILayout.EndArea();
         }
