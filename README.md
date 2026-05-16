@@ -1,51 +1,44 @@
-MIT Non-Commercial License
-Copyright (c) 2026 Kir4itsu
+## [![Project Status](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Project%20Status&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu)
+<p align="center"> 
+    <img src="https://img.shields.io/badge/Status-Early_Development-0d0221?style=for-the-badge&logo=unity&logoColor=00d4ff" /> 
+</p>
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software, associated game assets, and documentation files (the "Project"),
-to use, copy, modify, and distribute the Project for NON-COMMERCIAL purposes only,
-subject to the following conditions:
+> **Note:** This is a single-player game. There are no multiplayer features.
 
-1. ATTRIBUTION
-   You must give appropriate credit to the original author (Kir4itsu) in any
-   copy, modification, or distribution of this Project. Credit must include:
-   - The original author's name or username (Kir4itsu)
-   - A link to the original repository: https://github.com/Kir4itsu/MobileGame
-   - A clear indication if changes were made
+[![Play in Browser](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Play%20in%20Browser&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://kir4itsu.github.io/MobileGame/)
 
-2. NON-COMMERCIAL USE ONLY
-   This Project may NOT be used for commercial purposes. This includes, but is
-   not limited to:
-   - Selling or licensing this Project or any derivative work for profit
-   - Using this Project as part of a paid product or service
-   - Monetizing this Project through ads, subscriptions, or any other means
-   - Re-uploading or distributing this Project on paid platforms
-   Any commercial use requires explicit written permission from the author.
+<p align="center">
+  <a href="https://kir4itsu.github.io/MobileGame/">
+    <img src="https://img.shields.io/badge/Play%20Now-Web%20Browser-0d0221?style=for-the-badge&logo=googlechrome&logoColor=00d4ff" />
+  </a>
+</p>
 
-3. PERMITTED USES
-   The following uses are permitted without additional permission:
-   - Viewing and studying the source code for educational purposes
-   - Modifying the Project for personal, non-commercial use
-   - Sharing the Project or modifications for non-commercial purposes
-   - Forking the repository for non-commercial purposes
-   - Using the Project as a reference or learning resource
+This game can be played directly in your browser — no download required! Works on **PC** and **Mobile** browsers. Chrome is recommended for the best experience.
 
-4. RESTRICTIONS
-   - You may not remove or alter this license notice from any copy of the Project
-   - You may not claim ownership or authorship of the original Project
-   - You may not use the author's name or identity to endorse or promote
-     derivative works without prior written permission
+> **Note:** The browser version is currently optimized for mobile devices during development. Some features, including parts of the settings menu, may not function properly on PC browsers due to touchscreen-based UI controls.
 
-5. GAME ASSETS
-   All game assets included in this Project (3D models, textures, audio, UI elements,
-   and any other creative content) are also covered under this license and may not
-   be extracted and used separately for commercial purposes.
+[![Notes](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Notes&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu/MobileGame)
 
-6. NO WARRANTY
-   This Project is provided "as is", without warranty of any kind, express or
-   implied. The author is not liable for any damages or issues arising from the
-   use of this Project.
+If you encounter technical issues, bugs, or any problems related to this project, please contact me through the contact information provided on my [![GitHub](https://img.shields.io/badge/GitHub-0d0221?style=for-the-badge&logo=github&logoColor=00d4ff)](https://github.com/Kir4itsu) profile or you can dm me to [![Discord](https://img.shields.io/badge/Discord-0d0221?style=for-the-badge&logo=discord&logoColor=7b2fff)](https://discord.com/users/775314296661213194).
 
-For commercial use inquiries or special permissions, contact the author:
-   GitHub  : https://github.com/Kir4itsu
-   Discord : https://discord.com/users/775314296661213194
+This game project is still under active development and will continue to be improved over time.
+
+[![Tools & Resources](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Tools%20&%20Resources&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu/MobileGame)
+
+This project was developed using several tools and resources:
+
+- [![Unity Engine](https://img.shields.io/badge/Unity-0d0221?style=for-the-badge&logo=unity&logoColor=00d4ff)](https://unity.com/) as the main game engine 
+- [![Blender](https://img.shields.io/badge/Blender-0d0221?style=for-the-badge&logo=blender&logoColor=00d4ff)](https://www.blender.org/) for creating and editing 3D models
+- [![Google Gemini](https://img.shields.io/badge/Google_Gemini-0d0221?style=for-the-badge&logo=google&logoColor=00d4ff)](https://gemini.google.com/) for AI-assisted texture ideation and generation
+
+[![License](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20License&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu/MobileGame/blob/main/LICENSE)
+
+<p align="center">
+  <a href="https://github.com/Kir4itsu/MobileGame/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/License-Non--Commercial-0d0221?style=for-the-badge&logo=creativecommons&logoColor=00d4ff" />
+  </a>
+</p>
+
+This project is licensed under a **Custom Non-Commercial License** — see the [LICENSE](https://github.com/Kir4itsu/MobileGame/blob/main/LICENSE) file for full details.
+
+> **Note:** You may view, study, and modify this project for personal or educational use. Commercial use, redistribution for profit, or monetization of any kind is **not permitted** without explicit written permission from the author.
