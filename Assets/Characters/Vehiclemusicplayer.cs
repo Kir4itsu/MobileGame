@@ -198,7 +198,7 @@ public class VehicleMusicPlayer : MonoBehaviour
         panelRT.anchorMin        = new Vector2(1f, 1f);
         panelRT.anchorMax        = new Vector2(1f, 1f);
         panelRT.pivot            = new Vector2(1f, 1f);
-        panelRT.anchoredPosition = new Vector2(-60f, -10f); // geser kiri dari burger button
+        panelRT.anchoredPosition = new Vector2(-130f, -10f); // geser kiri dari burger button
         panelRT.sizeDelta        = new Vector2(280f, 90f);
 
         Image panelBG   = _uiPanel.AddComponent<Image>();
@@ -242,17 +242,17 @@ public class VehicleMusicPlayer : MonoBehaviour
 
         // ── Row tombol ────────────────────────────
         // PREV
-        GameObject prevGO = MakeControlButton(_uiPanel.transform, "◀◀", new Vector2(-75f, -14f));
+        GameObject prevGO = MakeControlButton(_uiPanel.transform, "◀◀", new Vector2(-75f, -8f));
         prevGO.GetComponent<Button>().onClick.AddListener(PlayPrev);
 
         // PLAY/PAUSE
-        GameObject ppGO = MakeControlButton(_uiPanel.transform, "▶", new Vector2(0f, -14f), large: true);
+        GameObject ppGO = MakeControlButton(_uiPanel.transform, "▶", new Vector2(0f, -8f), large: true);
         _btnPlayPause      = ppGO.GetComponent<Button>();
         _btnPlayPauseLabel = ppGO.GetComponentInChildren<Text>();
         _btnPlayPause.onClick.AddListener(TogglePlayPause);
 
         // NEXT
-        GameObject nextGO = MakeControlButton(_uiPanel.transform, "▶▶", new Vector2(75f, -14f));
+        GameObject nextGO = MakeControlButton(_uiPanel.transform, "▶▶", new Vector2(75f, -8f));
         nextGO.GetComponent<Button>().onClick.AddListener(PlayNext);
     }
 

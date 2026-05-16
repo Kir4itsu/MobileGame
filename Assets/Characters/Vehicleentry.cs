@@ -81,10 +81,15 @@ public class VehicleEntry : MonoBehaviour
     // ─────────────────────────────────────────────
     void HandleInput()
     {
+        // PENTING: Hanya proses input kendaraan jika player memang dekat atau di dalam.
+        // Tanpa guard ini, ConsumeInteract() akan menghabiskan input milik NPC
+        // setiap frame, sehingga tombol INTERACT di NPC tidak pernah jalan di Android.
+        if (!playerNearby && !playerInside) return;
+
         // Cek tombol INTERACT (Android) atau E (PC)
         bool interactPressed = Input.GetKeyDown(KeyCode.E);
 
-        // Cek ConsumeInteract dari FloatingJoystick (Android/mobile)
+        // Consume interact dari FloatingJoystick hanya saat kita eligible
         if (!interactPressed && FloatingJoystick.Instance != null)
             interactPressed = FloatingJoystick.Instance.ConsumeInteract();
 

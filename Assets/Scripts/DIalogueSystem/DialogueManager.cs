@@ -268,20 +268,26 @@ public class DialogueManager : MonoBehaviour
                           && FloatingJoystick.Instance != null
                           && FloatingJoystick.Instance.ConsumeInteract());
 
-        // ── Android fallback: tap layar langsung (jika overlay button tidak tertangkap) ──
-        #if UNITY_ANDROID && !UNITY_EDITOR
-        if (!nextInput && _inputCooldown <= 0f)
-        {
-            foreach (Touch t in Input.touches)
-            {
-                if (t.phase == TouchPhase.Began)
-                {
-                    nextInput = true;
-                    break;
-                }
-            }
-        }
-        #endif
+        // ── Android fallback: tap layar langsung ──
+        // CATATAN: fallback ini sengaja DINONAKTIFKAN karena menyebabkan konflik —
+        // setiap sentuhan layar (termasuk tap tombol INTERACT untuk NPC) akan
+        // terbaca di sini sebagai "lanjut dialog", padahal dialog belum dimulai.
+        // Dialog sudah punya TapToContinueOverlay (button transparan) yang cukup.
+        // Jika kamu butuh tap-anywhere, aktifkan kembali blok ini dengan hati-hati.
+        //
+        // #if UNITY_ANDROID && !UNITY_EDITOR
+        // if (!nextInput && _inputCooldown <= 0f)
+        // {
+        //     foreach (Touch t in Input.touches)
+        //     {
+        //         if (t.phase == TouchPhase.Began)
+        //         {
+        //             nextInput = true;
+        //             break;
+        //         }
+        //     }
+        // }
+        // #endif
 
         if (nextInput)
         {
