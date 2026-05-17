@@ -30,6 +30,26 @@ public class DialogueManager : MonoBehaviour
     public GameObject continueButton;
 
     // ─────────────────────────────────────────────
+    //  CHOICE UI
+    // ─────────────────────────────────────────────
+    [Header("Choice UI")]
+    [Tooltip("Panel container untuk tombol-tombol pilihan (di-generate otomatis atau assign manual)")]
+    public GameObject choicePanel;
+
+    [Tooltip("Prefab tombol pilihan. Harus punya Button + TextMeshProUGUI child.\n" +
+             "Kalau kosong, DialogueManager akan buat prefab sederhana secara runtime.")]
+    public GameObject choiceButtonPrefab;
+
+    [Tooltip("Warna background tombol pilihan yang di-highlight / selected")]
+    public Color choiceHighlightColor = new Color(0.26f, 0.40f, 1f, 1f);
+
+    [Tooltip("Warna background tombol pilihan normal")]
+    public Color choiceNormalColor = new Color(0.05f, 0.05f, 0.15f, 0.95f);
+
+    [Tooltip("Warna teks tombol pilihan")]
+    public Color choiceTextColor = Color.white;
+
+    // ─────────────────────────────────────────────
     //  PERSONA 3 STYLE — PORTRAIT SIZING
     // ─────────────────────────────────────────────
     [Header("Persona Style — Portrait Animation")]
@@ -113,16 +133,20 @@ public class DialogueManager : MonoBehaviour
     //  PRIVATE
     // ─────────────────────────────────────────────
     private Queue<DialogueLine> dialogueQueue;
-    private bool      isTyping       = false;
-    private bool      dialogueActive = false;
+    private bool      isTyping          = false;
+    private bool      dialogueActive    = false;
+    private bool      waitingForChoice  = false;   // ← NEW: sedang menunggu pilihan player
     private Coroutine typingCoroutine;
     private Coroutine portraitCoroutine;
-    private float     shadowPulseTimer = 0f;
+    private float     shadowPulseTimer  = 0f;
     private DialogueLine currentLine;
 
     private Button _tapToContinueOverlay;
     private float  _inputCooldown = 0f;
     private const float INPUT_COOLDOWN_DURATION = 0.35f;
+
+    // Choice buttons yang sedang aktif
+    private List<GameObject> _activeChoiceButtons = new List<GameObject>();
 
     // ═════════════════════════════════════════════
     //  AWAKE / START
@@ -145,6 +169,7 @@ public class DialogueManager : MonoBehaviour
     void Start()
     {
         ValidateReferences();
+        EnsureChoicePanel();
 
         if (dialoguePanel != null)
         {
@@ -158,8 +183,58 @@ public class DialogueManager : MonoBehaviour
         SetupShadows();
         BuildTapToContinueOverlay();
         HideContinueChevron(instant: true);
+        HideChoicePanel();
 
-        if (enableDebugLogs) Debug.Log("✅ DialogueManager initialized — Persona 3 Style!");
+        if (enableDebugLogs) Debug.Log("✅ DialogueManager initialized — Persona 3 Style + Branching Choices!");
+    }
+
+    // ─────────────────────────────────────────────
+    //  ENSURE CHOICE PANEL EXISTS
+    // ─────────────────────────────────────────────
+    /// <summary>
+    /// Jika choicePanel belum di-assign di Inspector, buat secara runtime
+    /// di atas DialoguePanel.
+    /// </summary>
+    void EnsureChoicePanel()
+    {
+        if (choicePanel != null) return;
+        if (dialoguePanel == null) return;
+
+        Canvas parentCanvas = dialoguePanel.GetComponentInParent<Canvas>();
+        if (parentCanvas == null) return;
+
+        GameObject cp = new GameObject("ChoicePanel", typeof(RectTransform));
+        cp.transform.SetParent(parentCanvas.transform, false);
+
+        RectTransform cpRT = cp.GetComponent<RectTransform>();
+        // Posisi: di tengah bawah layar, di atas dialogue box
+        cpRT.anchorMin        = new Vector2(0.5f, 0f);
+        cpRT.anchorMax        = new Vector2(0.5f, 0f);
+        cpRT.pivot            = new Vector2(0.5f, 0f);
+        cpRT.anchoredPosition = new Vector2(0f, 160f);   // 160 = di atas dialogue box ~150px
+        cpRT.sizeDelta        = new Vector2(600f, 200f);
+
+        // Layout vertikal agar tombol tersusun rapi
+        VerticalLayoutGroup vlg = cp.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing            = 10f;
+        vlg.childAlignment     = TextAnchor.MiddleCenter;
+        vlg.childControlWidth  = true;
+        vlg.childControlHeight = false;
+        vlg.childForceExpandWidth  = true;
+        vlg.childForceExpandHeight = false;
+        vlg.padding = new RectOffset(20, 20, 10, 10);
+
+        // ContentSizeFitter biar panel ikut tinggi tombol
+        ContentSizeFitter csf = cp.AddComponent<ContentSizeFitter>();
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        // Atas semua UI kecuali overlay
+        cp.transform.SetAsLastSibling();
+
+        choicePanel = cp;
+        choicePanel.SetActive(false);
+
+        if (enableDebugLogs) Debug.Log("✅ DialogueManager: ChoicePanel auto-created");
     }
 
     // ═════════════════════════════════════════════
@@ -193,7 +268,6 @@ public class DialogueManager : MonoBehaviour
         _tapToContinueOverlay.transition = Selectable.Transition.None;
         _tapToContinueOverlay.onClick.AddListener(OnTapToContinue);
 
-        // Harus di atas semua UI — taruh di index paling akhir
         overlayGO.transform.SetAsLastSibling();
 
         if (enableDebugLogs) Debug.Log("✅ DialogueManager: TapToContinue overlay built");
@@ -201,6 +275,8 @@ public class DialogueManager : MonoBehaviour
 
     void OnTapToContinue()
     {
+        // Jangan lanjut kalau sedang menunggu pilihan
+        if (waitingForChoice) return;
         if (_inputCooldown > 0f) return;
         if (isTyping) StopTyping();
         else          DisplayNextLine();
@@ -224,7 +300,6 @@ public class DialogueManager : MonoBehaviour
         if (characterNameText == null) { Debug.LogError("❌ DialogueManager: CharacterNameText not assigned!"); hasErrors = true; }
         if (dialogueText      == null) { Debug.LogError("❌ DialogueManager: DialogueText not assigned!");      hasErrors = true; }
 
-        // Persona-style warnings (tidak fatal — game tetap jalan)
         if (nameBadgeBackground == null)
             Debug.LogWarning("⚠️ [Persona Style] NameBadgeBackground not assigned — badge color won't change!");
         if (playerGlowBorder == null || npcGlowBorder == null)
@@ -259,6 +334,9 @@ public class DialogueManager : MonoBehaviour
     {
         if (!dialogueActive) return;
 
+        // Jangan proses keyboard/joystick input saat menunggu pilihan
+        if (waitingForChoice) return;
+
         if (_inputCooldown > 0f)
             _inputCooldown -= Time.deltaTime;
 
@@ -267,27 +345,6 @@ public class DialogueManager : MonoBehaviour
                       || (_inputCooldown <= 0f
                           && FloatingJoystick.Instance != null
                           && FloatingJoystick.Instance.ConsumeInteract());
-
-        // ── Android fallback: tap layar langsung ──
-        // CATATAN: fallback ini sengaja DINONAKTIFKAN karena menyebabkan konflik —
-        // setiap sentuhan layar (termasuk tap tombol INTERACT untuk NPC) akan
-        // terbaca di sini sebagai "lanjut dialog", padahal dialog belum dimulai.
-        // Dialog sudah punya TapToContinueOverlay (button transparan) yang cukup.
-        // Jika kamu butuh tap-anywhere, aktifkan kembali blok ini dengan hati-hati.
-        //
-        // #if UNITY_ANDROID && !UNITY_EDITOR
-        // if (!nextInput && _inputCooldown <= 0f)
-        // {
-        //     foreach (Touch t in Input.touches)
-        //     {
-        //         if (t.phase == TouchPhase.Began)
-        //         {
-        //             nextInput = true;
-        //             break;
-        //         }
-        //     }
-        // }
-        // #endif
 
         if (nextInput)
         {
@@ -302,16 +359,13 @@ public class DialogueManager : MonoBehaviour
     void UpdateShadowPulse()
     {
         shadowPulseTimer += Time.deltaTime * shadowPulseSpeed;
-        float pulse = 1f + Mathf.Sin(shadowPulseTimer) * shadowPulseAmount;
 
-        // Pakai alpha bukan scale — supaya tidak naik turun
         if (playerShadow != null && playerShadow.color.a > 0.1f)
         {
             Color c = playerShadow.color;
             c.a = Mathf.Clamp01(0.6f + Mathf.Sin(shadowPulseTimer) * 0.2f);
             playerShadow.color = c;
         }
-
         if (npcShadow != null && npcShadow.color.a > 0.1f)
         {
             Color c = npcShadow.color;
@@ -334,7 +388,8 @@ public class DialogueManager : MonoBehaviour
         if (enableDebugLogs)
             Debug.Log($"💬 DialogueManager: Starting dialogue '{data.dialogueID}' with {data.lines.Count} lines");
 
-        dialogueActive = true;
+        dialogueActive    = true;
+        waitingForChoice  = false;
         dialogueQueue.Clear();
 
         foreach (DialogueLine line in data.lines)
@@ -374,7 +429,6 @@ public class DialogueManager : MonoBehaviour
         if (characterNameText != null)
             characterNameText.text = currentLine.characterName;
 
-        // ── Persona 3 Style updates ──
         UpdateNameBadgeColor(currentLine);
         UpdatePortraitsAndShadows(currentLine);
         UpdateGlowBorders(currentLine);
@@ -393,7 +447,6 @@ public class DialogueManager : MonoBehaviour
     void UpdateNameBadgeColor(DialogueLine line)
     {
         if (nameBadgeBackground == null) return;
-
         nameBadgeBackground.color = line.isPlayer ? playerNameColor : npcNameColor;
 
         if (enableDebugLogs)
@@ -407,7 +460,6 @@ public class DialogueManager : MonoBehaviour
     {
         if (line.isPlayer)
         {
-            // Player sedang berbicara — terang & besar
             if (playerPortrait != null)
             {
                 playerPortrait.sprite = line.characterPortrait;
@@ -419,8 +471,6 @@ public class DialogueManager : MonoBehaviour
                 Color sc = shadowColor; sc.a = 0.8f;
                 playerShadow.color = sc;
             }
-
-            // NPC redup & mengecil (passive)
             float b = passiveBrightness;
             if (npcPortrait != null)
                 npcPortrait.color = new Color(b, b, b, 0.8f);
@@ -429,16 +479,12 @@ public class DialogueManager : MonoBehaviour
                 Color dc = shadowColor; dc.a = 0.2f;
                 npcShadow.color = dc;
             }
-
             AnimatePortraitSizes(
-                activePortrait:  playerPortrait?.rectTransform,
-                passivePortrait: npcPortrait?.rectTransform,
-                activeShadow:    playerShadow?.rectTransform,
-                passiveShadow:   npcShadow?.rectTransform);
+                playerPortrait?.rectTransform, npcPortrait?.rectTransform,
+                playerShadow?.rectTransform,   npcShadow?.rectTransform);
         }
         else
         {
-            // NPC sedang berbicara — terang & besar
             if (npcPortrait != null)
             {
                 npcPortrait.sprite = line.characterPortrait;
@@ -450,8 +496,6 @@ public class DialogueManager : MonoBehaviour
                 Color sc = shadowColor; sc.a = 0.8f;
                 npcShadow.color = sc;
             }
-
-            // Player redup & mengecil (passive)
             float b = passiveBrightness;
             if (playerPortrait != null)
                 playerPortrait.color = new Color(b, b, b, 0.8f);
@@ -460,12 +504,9 @@ public class DialogueManager : MonoBehaviour
                 Color dc = shadowColor; dc.a = 0.2f;
                 playerShadow.color = dc;
             }
-
             AnimatePortraitSizes(
-                activePortrait:  npcPortrait?.rectTransform,
-                passivePortrait: playerPortrait?.rectTransform,
-                activeShadow:    npcShadow?.rectTransform,
-                passiveShadow:   playerShadow?.rectTransform);
+                npcPortrait?.rectTransform,    playerPortrait?.rectTransform,
+                npcShadow?.rectTransform,      playerShadow?.rectTransform);
         }
     }
 
@@ -506,7 +547,6 @@ public class DialogueManager : MonoBehaviour
             yield return null;
         }
 
-        // Snap ke nilai akhir
         if (activePortrait  != null) activePortrait.sizeDelta  = activePortraitSize;
         if (passivePortrait != null) passivePortrait.sizeDelta = passivePortraitSize;
         if (activeShadow    != null) activeShadow.sizeDelta    = activePortraitSize;
@@ -542,8 +582,16 @@ public class DialogueManager : MonoBehaviour
 
         isTyping = false;
 
-        if (continueButton != null) continueButton.SetActive(true);
-        ShowContinueChevron();
+        // ── Setelah selesai mengetik, cek apakah ada choices ──
+        if (currentLine != null && currentLine.hasChoices && currentLine.choices != null && currentLine.choices.Count > 0)
+        {
+            ShowChoices(currentLine.choices);
+        }
+        else
+        {
+            if (continueButton != null) continueButton.SetActive(true);
+            ShowContinueChevron();
+        }
     }
 
     void StopTyping()
@@ -555,8 +603,188 @@ public class DialogueManager : MonoBehaviour
 
         isTyping = false;
 
-        if (continueButton != null) continueButton.SetActive(true);
-        ShowContinueChevron();
+        // ── Setelah skip typing, cek choices ──
+        if (currentLine != null && currentLine.hasChoices && currentLine.choices != null && currentLine.choices.Count > 0)
+        {
+            ShowChoices(currentLine.choices);
+        }
+        else
+        {
+            if (continueButton != null) continueButton.SetActive(true);
+            ShowContinueChevron();
+        }
+    }
+
+    // ═════════════════════════════════════════════
+    //  CHOICE SYSTEM
+    // ═════════════════════════════════════════════
+
+    /// <summary>
+    /// Tampilkan panel pilihan Persona 3 style.
+    /// Semua pilihan di-tap langsung oleh player.
+    /// </summary>
+    void ShowChoices(List<DialogueChoice> choices)
+    {
+        if (choicePanel == null)
+        {
+            Debug.LogWarning("⚠️ DialogueManager: ChoicePanel not found! Cannot show choices.");
+            return;
+        }
+
+        waitingForChoice = true;
+        SetTapOverlayActive(false);   // nonaktifkan tap-to-continue agar tidak konflik
+        HideContinueChevron(instant: true);
+        if (continueButton != null) continueButton.SetActive(false);
+
+        ClearChoiceButtons();
+
+        int maxChoices = Mathf.Min(choices.Count, 3);
+        for (int i = 0; i < maxChoices; i++)
+        {
+            DialogueChoice choice = choices[i];
+            GameObject btn = CreateChoiceButton(choice.choiceText, choice.nextDialogue);
+            _activeChoiceButtons.Add(btn);
+        }
+
+        choicePanel.SetActive(true);
+        StartCoroutine(AnimateChoicePanelIn());
+
+        if (enableDebugLogs) Debug.Log($"💬 DialogueManager: Showing {maxChoices} choices");
+    }
+
+    GameObject CreateChoiceButton(string text, DialogueData nextDialogue)
+    {
+        GameObject btnGO;
+
+        if (choiceButtonPrefab != null)
+        {
+            btnGO = Instantiate(choiceButtonPrefab, choicePanel.transform);
+        }
+        else
+        {
+            // Buat button runtime ala Persona 3 Reload
+            btnGO = new GameObject("ChoiceButton", typeof(RectTransform));
+            btnGO.transform.SetParent(choicePanel.transform, false);
+
+            // Size
+            RectTransform rt = btnGO.GetComponent<RectTransform>();
+            rt.sizeDelta = new Vector2(560f, 52f);
+
+            // Background
+            Image bg = btnGO.AddComponent<Image>();
+            bg.color = choiceNormalColor;
+
+            // Left accent bar (Persona 3 style)
+            GameObject accentBar = new GameObject("AccentBar", typeof(RectTransform));
+            accentBar.transform.SetParent(btnGO.transform, false);
+            Image accentImg = accentBar.AddComponent<Image>();
+            accentImg.color = choiceHighlightColor;
+            RectTransform acRT = accentBar.GetComponent<RectTransform>();
+            acRT.anchorMin        = new Vector2(0f, 0f);
+            acRT.anchorMax        = new Vector2(0f, 1f);
+            acRT.pivot            = new Vector2(0f, 0.5f);
+            acRT.anchoredPosition = Vector2.zero;
+            acRT.sizeDelta        = new Vector2(4f, 0f);
+
+            // Text
+            GameObject textGO = new GameObject("Label", typeof(RectTransform));
+            textGO.transform.SetParent(btnGO.transform, false);
+            TextMeshProUGUI tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text      = text;
+            tmp.fontSize  = 18f;
+            tmp.fontStyle = FontStyles.Bold;
+            tmp.color     = choiceTextColor;
+            tmp.alignment = TextAlignmentOptions.MidlineLeft;
+            tmp.textWrappingMode = TextWrappingModes.Normal;
+            RectTransform tRT = textGO.GetComponent<RectTransform>();
+            tRT.anchorMin = Vector2.zero;
+            tRT.anchorMax = Vector2.one;
+            tRT.offsetMin = new Vector2(20f, 4f);
+            tRT.offsetMax = new Vector2(-8f, -4f);
+
+            // Button component
+            Button btn = btnGO.AddComponent<Button>();
+            btn.transition = Selectable.Transition.ColorTint;
+
+            ColorBlock cb = btn.colors;
+            cb.normalColor      = choiceNormalColor;
+            cb.highlightedColor = choiceHighlightColor;
+            cb.pressedColor     = choiceHighlightColor * 0.8f;
+            cb.selectedColor    = choiceHighlightColor;
+            btn.colors = cb;
+        }
+
+        // Assign click handler — capture variable agar closure benar
+        Button buttonComp = btnGO.GetComponent<Button>();
+        if (buttonComp == null) buttonComp = btnGO.AddComponent<Button>();
+
+        DialogueData captured = nextDialogue; // closure-safe
+        buttonComp.onClick.RemoveAllListeners();
+        buttonComp.onClick.AddListener(() => OnChoiceSelected(captured));
+
+        return btnGO;
+    }
+
+    void OnChoiceSelected(DialogueData nextDialogue)
+    {
+        if (!waitingForChoice) return;
+
+        if (enableDebugLogs) Debug.Log("✅ DialogueManager: Choice selected");
+
+        HideChoicePanel();
+        waitingForChoice = false;
+
+        if (nextDialogue != null && nextDialogue.lines != null && nextDialogue.lines.Count > 0)
+        {
+            // Ganti queue dengan dialogue lanjutan dari pilihan ini
+            dialogueQueue.Clear();
+            foreach (DialogueLine line in nextDialogue.lines)
+                dialogueQueue.Enqueue(line);
+
+            _inputCooldown = INPUT_COOLDOWN_DURATION;
+            SetTapOverlayActive(true);
+            DisplayNextLine();
+        }
+        else
+        {
+            // Tidak ada dialogue lanjutan → akhiri saja
+            if (enableDebugLogs) Debug.Log("ℹ️ DialogueManager: No nextDialogue after choice — ending.");
+            EndDialogue();
+        }
+    }
+
+    void ClearChoiceButtons()
+    {
+        foreach (GameObject btn in _activeChoiceButtons)
+        {
+            if (btn != null) Destroy(btn);
+        }
+        _activeChoiceButtons.Clear();
+    }
+
+    void HideChoicePanel()
+    {
+        ClearChoiceButtons();
+        if (choicePanel != null) choicePanel.SetActive(false);
+    }
+
+    IEnumerator AnimateChoicePanelIn()
+    {
+        if (choicePanel == null) yield break;
+
+        CanvasGroup cg = choicePanel.GetComponent<CanvasGroup>();
+        if (cg == null) cg = choicePanel.AddComponent<CanvasGroup>();
+
+        cg.alpha = 0f;
+        float elapsed = 0f;
+        float dur = 0.2f;
+        while (elapsed < dur)
+        {
+            elapsed += Time.deltaTime;
+            cg.alpha = Mathf.Lerp(0f, 1f, elapsed / dur);
+            yield return null;
+        }
+        cg.alpha = 1f;
     }
 
     // ─────────────────────────────────────────────
@@ -595,6 +823,8 @@ public class DialogueManager : MonoBehaviour
         if (enableDebugLogs) Debug.Log("✅ DialogueManager: Hiding dialogue panel");
 
         HideContinueChevron(instant: true);
+        HideChoicePanel();
+        waitingForChoice = false;
         SetTapOverlayActive(false);
 
         if (dialoguePanel != null)
@@ -620,11 +850,9 @@ public class DialogueManager : MonoBehaviour
         currentLine    = null;
         _inputCooldown = 0f;
 
-        // Reset ukuran portrait
         if (playerPortrait != null) playerPortrait.rectTransform.sizeDelta = activePortraitSize;
         if (npcPortrait    != null) npcPortrait.rectTransform.sizeDelta    = activePortraitSize;
 
-        // Matikan glow border
         if (playerGlowBorder != null) playerGlowBorder.SetActive(false);
         if (npcGlowBorder    != null) npcGlowBorder.SetActive(false);
 
