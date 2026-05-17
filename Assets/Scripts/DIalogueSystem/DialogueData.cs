@@ -2,16 +2,27 @@ using UnityEngine;
 using System.Collections.Generic;
 
 // ─────────────────────────────────────────────────────────────
-//  DIALOGUE CHOICE  — satu pilihan jawaban player
+//  DIALOGUE BRANCH  — kumpulan lines untuk satu cabang pilihan
+//  Ini BUKAN nested DialogueData, jadi tidak ada recursion.
+// ─────────────────────────────────────────────────────────────
+[System.Serializable]
+public class DialogueBranch
+{
+    [Tooltip("Lines yang diputar setelah pilihan ini dipilih")]
+    public List<DialogueLine> lines = new List<DialogueLine>();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  DIALOGUE CHOICE  — satu tombol pilihan player
 // ─────────────────────────────────────────────────────────────
 [System.Serializable]
 public class DialogueChoice
 {
-    [Tooltip("Teks yang muncul di tombol pilihan")]
+    [Tooltip("Teks tombol pilihan")]
     public string choiceText;
 
-    [Tooltip("Dialogue lanjutan setelah pilihan ini dipilih")]
-    public DialogueData nextDialogue;
+    [Tooltip("Lines yang diputar setelah pilihan ini dipilih")]
+    public DialogueBranch branch = new DialogueBranch();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -28,20 +39,18 @@ public class DialogueLine
 
     public bool isPlayer;
 
-    // ── Voice / Sound ───────────────────────────────────────
-    [Tooltip("Sound clip yang diputar saat line ini mulai ditampilkan (opsional)")]
+    [Tooltip("Sound clip yang diputar saat line ini mulai (opsional)")]
     public AudioClip voiceClip;
 
-    // ── Branching ──────────────────────────────────────────
-    [Tooltip("Centang jika line ini diikuti pilihan jawaban player (choices)")]
+    [Tooltip("Centang jika line ini diikuti pilihan jawaban player")]
     public bool hasChoices;
 
-    [Tooltip("Maksimal 3 pilihan. Pilihan muncul setelah teks line ini selesai diketik.")]
+    [Tooltip("Maksimal 3 pilihan")]
     public List<DialogueChoice> choices = new List<DialogueChoice>();
 }
 
 // ─────────────────────────────────────────────────────────────
-//  DIALOGUE DATA  — satu set dialogue (ScriptableObject)
+//  DIALOGUE DATA  — satu set dialogue, semua dalam 1 field
 // ─────────────────────────────────────────────────────────────
 [System.Serializable]
 public class DialogueData

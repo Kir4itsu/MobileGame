@@ -64,6 +64,15 @@ public class DialogueManager : MonoBehaviour
     public float passiveBrightness = 0.35f;
 
     // ─────────────────────────────────────────────
+    //  PORTRAIT OFFSET — diset oleh NPCInteractable tiap dialogue
+    // ─────────────────────────────────────────────
+    [Header("Persona Style — Portrait Offset (set by NPCInteractable)")]
+    [Tooltip("Offset posisi gambar NPC (X = kiri/kanan, Y = atas/bawah). Diset otomatis oleh NPCInteractable.")]
+    public Vector2 npcPortraitOffset    = Vector2.zero;
+    [Tooltip("Offset posisi gambar Player. Diset otomatis oleh NPCInteractable.")]
+    public Vector2 playerPortraitOffset = Vector2.zero;
+
+    // ─────────────────────────────────────────────
     //  PERSONA 3 STYLE — NAME BADGE
     // ─────────────────────────────────────────────
     [Header("Persona Style — Name Badge Color")]
@@ -152,6 +161,12 @@ public class DialogueManager : MonoBehaviour
     // Choice buttons yang sedang aktif
     private List<GameObject> _activeChoiceButtons = new List<GameObject>();
 
+    // Base anchoredPosition portrait (tanpa offset) — disimpan saat Start
+    private Vector2 _npcPortraitBasePos;
+    private Vector2 _npcShadowBasePos;
+    private Vector2 _playerPortraitBasePos;
+    private Vector2 _playerShadowBasePos;
+
     // ═════════════════════════════════════════════
     //  AWAKE / START
     // ═════════════════════════════════════════════
@@ -187,6 +202,13 @@ public class DialogueManager : MonoBehaviour
         SetupShadows();
         BuildTapToContinueOverlay();
         EnsureVoiceAudioSource();
+
+        // Cache base anchoredPosition portrait (sebelum offset apapun diterapkan)
+        if (npcPortrait    != null) _npcPortraitBasePos    = npcPortrait.rectTransform.anchoredPosition;
+        if (npcShadow      != null) _npcShadowBasePos      = npcShadow.rectTransform.anchoredPosition;
+        if (playerPortrait != null) _playerPortraitBasePos = playerPortrait.rectTransform.anchoredPosition;
+        if (playerShadow   != null) _playerShadowBasePos   = playerShadow.rectTransform.anchoredPosition;
+
         HideContinueChevron(instant: true);
         HideChoicePanel();
 
@@ -480,15 +502,35 @@ public class DialogueManager : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────
-    //  UPDATE NAME BADGE COLOR (Persona 3 style)
+    //  UPDATE NAME BADGE COLOR + POSISI (Persona 3 style)
     // ─────────────────────────────────────────────
     void UpdateNameBadgeColor(DialogueLine line)
     {
         if (nameBadgeBackground == null) return;
-        nameBadgeBackground.color = line.isPlayer ? playerNameColor : npcNameColor;
+
+        RectTransform badgeRT = nameBadgeBackground.rectTransform;
+
+        if (line.isPlayer)
+        {
+            // Player — badge di kiri bawah, warna ungu
+            nameBadgeBackground.color = playerNameColor;
+            badgeRT.anchorMin        = new Vector2(0f, 1f);
+            badgeRT.anchorMax        = new Vector2(0f, 1f);
+            badgeRT.pivot            = new Vector2(0f, 0f);
+            badgeRT.anchoredPosition = new Vector2(24f, 4f);
+        }
+        else
+        {
+            // NPC — badge di kanan bawah, warna merah
+            nameBadgeBackground.color = npcNameColor;
+            badgeRT.anchorMin        = new Vector2(1f, 1f);
+            badgeRT.anchorMax        = new Vector2(1f, 1f);
+            badgeRT.pivot            = new Vector2(1f, 0f);
+            badgeRT.anchoredPosition = new Vector2(-24f, 4f);
+        }
 
         if (enableDebugLogs)
-            Debug.Log($"🎨 [Persona Style] Badge color → {(line.isPlayer ? "Player (Purple)" : "NPC (Red)")}");
+            Debug.Log($"🎨 Badge → {(line.isPlayer ? "Player kiri (Purple)" : "NPC kanan (Red)")}");
     }
 
     // ─────────────────────────────────────────────
@@ -546,6 +588,33 @@ public class DialogueManager : MonoBehaviour
                 npcPortrait?.rectTransform,    playerPortrait?.rectTransform,
                 npcShadow?.rectTransform,      playerShadow?.rectTransform);
         }
+
+        // Apply offset posisi (dari NPCInteractable) setiap kali portrait diupdate
+        ApplyPortraitOffsets();
+    }
+
+    // ─────────────────────────────────────────────
+    //  APPLY PORTRAIT OFFSETS
+    //  Dipanggil setiap kali portrait diupdate.
+    //  Base position + offset dari NPCInteractable.
+    // ─────────────────────────────────────────────
+    void ApplyPortraitOffsets()
+    {
+        if (npcPortrait != null)
+            npcPortrait.rectTransform.anchoredPosition =
+                _npcPortraitBasePos + npcPortraitOffset;
+
+        if (npcShadow != null)
+            npcShadow.rectTransform.anchoredPosition =
+                _npcShadowBasePos + npcPortraitOffset + new Vector2(5f, -5f);
+
+        if (playerPortrait != null)
+            playerPortrait.rectTransform.anchoredPosition =
+                _playerPortraitBasePos + playerPortraitOffset;
+
+        if (playerShadow != null)
+            playerShadow.rectTransform.anchoredPosition =
+                _playerShadowBasePos + playerPortraitOffset + new Vector2(5f, -5f);
     }
 
     // ─────────────────────────────────────────────
@@ -596,8 +665,9 @@ public class DialogueManager : MonoBehaviour
     // ─────────────────────────────────────────────
     void UpdateGlowBorders(DialogueLine line)
     {
-        if (playerGlowBorder != null) playerGlowBorder.SetActive(line.isPlayer);
-        if (npcGlowBorder    != null) npcGlowBorder.SetActive(!line.isPlayer);
+        // Glow border dinonaktifkan — cukup gunakan brightness portrait untuk efek aktif/pasif
+        if (playerGlowBorder != null) playerGlowBorder.SetActive(false);
+        if (npcGlowBorder    != null) npcGlowBorder.SetActive(false);
     }
 
     // ═════════════════════════════════════════════
@@ -684,7 +754,7 @@ public class DialogueManager : MonoBehaviour
         for (int i = 0; i < maxChoices; i++)
         {
             DialogueChoice choice = choices[i];
-            GameObject btn = CreateChoiceButton(choice.choiceText, choice.nextDialogue);
+            GameObject btn = CreateChoiceButton(choice.choiceText, choice.branch);
             _activeChoiceButtons.Add(btn);
         }
 
@@ -694,7 +764,7 @@ public class DialogueManager : MonoBehaviour
         if (enableDebugLogs) Debug.Log($"💬 DialogueManager: Showing {maxChoices} choices");
     }
 
-    GameObject CreateChoiceButton(string text, DialogueData nextDialogue)
+    GameObject CreateChoiceButton(string text, DialogueBranch branch)
     {
         GameObject btnGO;
 
@@ -704,20 +774,24 @@ public class DialogueManager : MonoBehaviour
         }
         else
         {
-            // Buat button runtime ala Persona 3 Reload
+            // ── Buat button runtime — Persona 3 Reload accurate style ──
             btnGO = new GameObject("ChoiceButton", typeof(RectTransform));
             btnGO.transform.SetParent(choicePanel.transform, false);
 
-            // Size
             RectTransform rt = btnGO.GetComponent<RectTransform>();
-            rt.sizeDelta = new Vector2(560f, 52f);
+            rt.sizeDelta = new Vector2(520f, 50f);
 
-            // Background
+            // Background gelap navy
             Image bg = btnGO.AddComponent<Image>();
             bg.color = choiceNormalColor;
 
-            // Left accent bar (Persona 3 style)
-            GameObject accentBar = new GameObject("AccentBar", typeof(RectTransform));
+            // Border outline biru tipis
+            Outline border = btnGO.AddComponent<Outline>();
+            border.effectColor    = new Color(choiceHighlightColor.r, choiceHighlightColor.g, choiceHighlightColor.b, 0.55f);
+            border.effectDistance = new Vector2(1f, 1f);
+
+            // Left accent bar biru solid
+            GameObject accentBar = new GameObject("LeftAccentBar", typeof(RectTransform));
             accentBar.transform.SetParent(btnGO.transform, false);
             Image accentImg = accentBar.AddComponent<Image>();
             accentImg.color = choiceHighlightColor;
@@ -728,31 +802,46 @@ public class DialogueManager : MonoBehaviour
             acRT.anchoredPosition = Vector2.zero;
             acRT.sizeDelta        = new Vector2(4f, 0f);
 
-            // Text
+            // Right arrow (▶ samar di kanan)
+            GameObject rightArrow = new GameObject("RightArrow", typeof(RectTransform));
+            rightArrow.transform.SetParent(btnGO.transform, false);
+            TextMeshProUGUI raTMP = rightArrow.AddComponent<TextMeshProUGUI>();
+            raTMP.text      = "▶";
+            raTMP.fontSize  = 10f;
+            raTMP.color     = new Color(choiceHighlightColor.r, choiceHighlightColor.g, choiceHighlightColor.b, 0.4f);
+            raTMP.alignment = TextAlignmentOptions.MidlineRight;
+            RectTransform raRT = rightArrow.GetComponent<RectTransform>();
+            raRT.anchorMin = Vector2.zero;
+            raRT.anchorMax = Vector2.one;
+            raRT.offsetMin = new Vector2(0f, 0f);
+            raRT.offsetMax = new Vector2(-12f, 0f);
+
+            // Label teks
             GameObject textGO = new GameObject("Label", typeof(RectTransform));
             textGO.transform.SetParent(btnGO.transform, false);
             TextMeshProUGUI tmp = textGO.AddComponent<TextMeshProUGUI>();
-            tmp.text      = text;
-            tmp.fontSize  = 18f;
-            tmp.fontStyle = FontStyles.Bold;
-            tmp.color     = choiceTextColor;
-            tmp.alignment = TextAlignmentOptions.MidlineLeft;
+            tmp.text             = text;
+            tmp.fontSize         = 16f;
+            tmp.fontStyle        = FontStyles.Bold;
+            tmp.color            = choiceTextColor;
+            tmp.alignment        = TextAlignmentOptions.MidlineLeft;
             tmp.textWrappingMode = TextWrappingModes.Normal;
             RectTransform tRT = textGO.GetComponent<RectTransform>();
             tRT.anchorMin = Vector2.zero;
             tRT.anchorMax = Vector2.one;
-            tRT.offsetMin = new Vector2(20f, 4f);
-            tRT.offsetMax = new Vector2(-8f, -4f);
+            tRT.offsetMin = new Vector2(18f, 4f);
+            tRT.offsetMax = new Vector2(-28f, -4f);
 
-            // Button component
+            // Button component dengan ColorTint
             Button btn = btnGO.AddComponent<Button>();
-            btn.transition = Selectable.Transition.ColorTint;
-
+            btn.transition    = Selectable.Transition.ColorTint;
+            btn.targetGraphic = bg;
             ColorBlock cb = btn.colors;
             cb.normalColor      = choiceNormalColor;
-            cb.highlightedColor = choiceHighlightColor;
-            cb.pressedColor     = choiceHighlightColor * 0.8f;
-            cb.selectedColor    = choiceHighlightColor;
+            cb.highlightedColor = new Color(choiceHighlightColor.r, choiceHighlightColor.g, choiceHighlightColor.b, 0.25f);
+            cb.pressedColor     = new Color(choiceHighlightColor.r, choiceHighlightColor.g, choiceHighlightColor.b, 0.45f);
+            cb.selectedColor    = new Color(choiceHighlightColor.r, choiceHighlightColor.g, choiceHighlightColor.b, 0.25f);
+            cb.fadeDuration     = 0.08f;
             btn.colors = cb;
         }
 
@@ -760,14 +849,14 @@ public class DialogueManager : MonoBehaviour
         Button buttonComp = btnGO.GetComponent<Button>();
         if (buttonComp == null) buttonComp = btnGO.AddComponent<Button>();
 
-        DialogueData captured = nextDialogue; // closure-safe
+        DialogueBranch captured = branch;
         buttonComp.onClick.RemoveAllListeners();
         buttonComp.onClick.AddListener(() => OnChoiceSelected(captured));
 
         return btnGO;
     }
 
-    void OnChoiceSelected(DialogueData nextDialogue)
+    void OnChoiceSelected(DialogueBranch branch)
     {
         if (!waitingForChoice) return;
 
@@ -776,11 +865,10 @@ public class DialogueManager : MonoBehaviour
         HideChoicePanel();
         waitingForChoice = false;
 
-        if (nextDialogue != null && nextDialogue.lines != null && nextDialogue.lines.Count > 0)
+        if (branch != null && branch.lines != null && branch.lines.Count > 0)
         {
-            // Ganti queue dengan dialogue lanjutan dari pilihan ini
             dialogueQueue.Clear();
-            foreach (DialogueLine line in nextDialogue.lines)
+            foreach (DialogueLine line in branch.lines)
                 dialogueQueue.Enqueue(line);
 
             _inputCooldown = INPUT_COOLDOWN_DURATION;
@@ -789,8 +877,7 @@ public class DialogueManager : MonoBehaviour
         }
         else
         {
-            // Tidak ada dialogue lanjutan → akhiri saja
-            if (enableDebugLogs) Debug.Log("ℹ️ DialogueManager: No nextDialogue after choice — ending.");
+            if (enableDebugLogs) Debug.Log("ℹ️ DialogueManager: No branch lines — ending.");
             EndDialogue();
         }
     }
