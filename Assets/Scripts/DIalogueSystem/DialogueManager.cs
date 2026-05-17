@@ -99,6 +99,10 @@ public class DialogueManager : MonoBehaviour
     public float typingSpeed = 0.04f;
     public AudioClip typingSound;
 
+    [Tooltip("AudioSource khusus untuk voice line per-dialogue. " +
+             "Kalau kosong, DialogueManager akan buat AudioSource sendiri secara runtime.")]
+    public AudioSource voiceAudioSource;
+
     // ─────────────────────────────────────────────
     //  SHADOW SETTINGS
     // ─────────────────────────────────────────────
@@ -182,10 +186,41 @@ public class DialogueManager : MonoBehaviour
 
         SetupShadows();
         BuildTapToContinueOverlay();
+        EnsureVoiceAudioSource();
         HideContinueChevron(instant: true);
         HideChoicePanel();
 
         if (enableDebugLogs) Debug.Log("✅ DialogueManager initialized — Persona 3 Style + Branching Choices!");
+    }
+
+    // ─────────────────────────────────────────────
+    //  VOICE AUDIO SOURCE SETUP
+    // ─────────────────────────────────────────────
+    void EnsureVoiceAudioSource()
+    {
+        if (voiceAudioSource != null) return;
+        voiceAudioSource = GetComponent<AudioSource>();
+        if (voiceAudioSource == null)
+        {
+            voiceAudioSource = gameObject.AddComponent<AudioSource>();
+            voiceAudioSource.playOnAwake  = false;
+            voiceAudioSource.spatialBlend = 0f; // 2D sound
+            if (enableDebugLogs) Debug.Log("✅ DialogueManager: Voice AudioSource auto-created");
+        }
+    }
+
+    void PlayVoiceClip(AudioClip clip)
+    {
+        if (clip == null || voiceAudioSource == null) return;
+        voiceAudioSource.Stop();
+        voiceAudioSource.clip = clip;
+        voiceAudioSource.Play();
+    }
+
+    void StopVoiceClip()
+    {
+        if (voiceAudioSource != null && voiceAudioSource.isPlaying)
+            voiceAudioSource.Stop();
     }
 
     // ─────────────────────────────────────────────
@@ -433,6 +468,9 @@ public class DialogueManager : MonoBehaviour
         UpdatePortraitsAndShadows(currentLine);
         UpdateGlowBorders(currentLine);
 
+        // ── Play voice clip jika ada ──
+        PlayVoiceClip(currentLine.voiceClip);
+
         HideContinueChevron(instant: true);
 
         if (typingCoroutine != null) StopCoroutine(typingCoroutine);
@@ -602,6 +640,10 @@ public class DialogueManager : MonoBehaviour
             dialogueText.text = currentLine.dialogue;
 
         isTyping = false;
+
+        // Stop voice juga saat player skip — opsional, hapus baris ini
+        // kalau mau voice tetap lanjut meski teks sudah skip
+        StopVoiceClip();
 
         // ── Setelah skip typing, cek choices ──
         if (currentLine != null && currentLine.hasChoices && currentLine.choices != null && currentLine.choices.Count > 0)

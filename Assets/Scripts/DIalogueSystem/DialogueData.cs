@@ -28,6 +28,10 @@ public class DialogueLine
 
     public bool isPlayer;
 
+    // ── Voice / Sound ───────────────────────────────────────
+    [Tooltip("Sound clip yang diputar saat line ini mulai ditampilkan (opsional)")]
+    public AudioClip voiceClip;
+
     // ── Branching ──────────────────────────────────────────
     [Tooltip("Centang jika line ini diikuti pilihan jawaban player (choices)")]
     public bool hasChoices;

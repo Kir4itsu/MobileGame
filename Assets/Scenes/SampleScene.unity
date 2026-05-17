@@ -5248,7 +5248,7 @@ BoxCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 1
+  m_IsTrigger: 0
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
@@ -5345,6 +5345,27 @@ MonoBehaviour:
   - {fileID: 8300000, guid: bdd13d5c7b718b345921aae0c8897a61, type: 3}
   - {fileID: 8300000, guid: a945cb12c37e1ec4f8727e34fcea340e, type: 3}
   volume: 0.7
+--- !u!65 &138334912
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 138334902}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.004797831, y: 0.0060921595, z: 0.009929352}
+  m_Center: {x: 0.000010704974, y: 0.0030460798, z: -0.00013462504}
 --- !u!64 &145007128
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -6585,14 +6606,52 @@ MonoBehaviour:
       characterPortrait: {fileID: 0}
       dialogue: .....
       isPlayer: 0
+      hasChoices: 0
+      choices: []
     - characterName: You
       characterPortrait: {fileID: 21300000, guid: f26a2d13d10857e4fb709d6abd30cfa7, type: 3}
-      dialogue: Ni anak ngapain coba
+      dialogue: Enaknya ngomong apa ya?
       isPlayer: 1
-    - characterName: Maya
-      characterPortrait: {fileID: 0}
-      dialogue: .....
-      isPlayer: 0
+      hasChoices: 1
+      choices:
+      - choiceText: Biarin Aja Deh
+        nextDialogue:
+          dialogueID: Maya_Ch1
+          lines:
+          - characterName: You
+            characterPortrait: {fileID: 21300000, guid: f26a2d13d10857e4fb709d6abd30cfa7, type: 3}
+            dialogue: ......
+            isPlayer: 1
+            hasChoices: 0
+            choices: []
+          - characterName: Maya
+            characterPortrait: {fileID: 0}
+            dialogue: ......
+            isPlayer: 0
+            hasChoices: 0
+            choices: []
+          - characterName: You
+            characterPortrait: {fileID: 21300000, guid: f26a2d13d10857e4fb709d6abd30cfa7, type: 3}
+            dialogue: Dahlah...
+            isPlayer: 1
+            hasChoices: 0
+            choices: []
+      - choiceText: Kamu Kenapa?
+        nextDialogue:
+          dialogueID: Maya_Ch2
+          lines:
+          - characterName: Maya
+            characterPortrait: {fileID: 0}
+            dialogue: Gapapa kok
+            isPlayer: 0
+            hasChoices: 0
+            choices: []
+          - characterName: You
+            characterPortrait: {fileID: 21300000, guid: f26a2d13d10857e4fb709d6abd30cfa7, type: 3}
+            dialogue: Oke aku tinggal ya
+            isPlayer: 1
+            hasChoices: 0
+            choices: []
   interactionRange: 7
   interactKey: 101
   interactionPrompt: {fileID: 1632664521355131613, guid: c5b47ffd20d72234e820c9891bc8d1df, type: 3}
@@ -6996,6 +7055,11 @@ MonoBehaviour:
   characterNameText: {fileID: 1355217911}
   dialogueText: {fileID: 1289343462}
   continueButton: {fileID: 2122027120}
+  choicePanel: {fileID: 0}
+  choiceButtonPrefab: {fileID: 0}
+  choiceHighlightColor: {r: 0.26, g: 0.4, b: 1, a: 1}
+  choiceNormalColor: {r: 0.05, g: 0.05, b: 0.15, a: 0.95}
+  choiceTextColor: {r: 1, g: 1, b: 1, a: 1}
   activePortraitSize: {x: 700, y: 1600}
   passivePortraitSize: {x: 560, y: 1280}
   portraitTransitionSpeed: 10
@@ -7661,14 +7725,20 @@ MonoBehaviour:
       characterPortrait: {fileID: 21300000, guid: b4200bcbf336b1245841bec2b0334cb2, type: 3}
       dialogue: Iya Ada Apa?
       isPlayer: 0
+      hasChoices: 0
+      choices: []
     - characterName: You
       characterPortrait: {fileID: 21300000, guid: 3cf3d7ecfaffe2b45ace83f5f3651383, type: 3}
       dialogue: Gak jadi pak
       isPlayer: 1
+      hasChoices: 0
+      choices: []
     - characterName: Pengajar
       characterPortrait: {fileID: 21300000, guid: b4200bcbf336b1245841bec2b0334cb2, type: 3}
       dialogue: Ok
       isPlayer: 0
+      hasChoices: 0
+      choices: []
   interactionRange: 10
   interactKey: 101
   interactionPrompt: {fileID: 1255847840}
@@ -7792,11 +7862,11 @@ MeshCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 1
+  m_IsTrigger: 0
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 5
-  m_Convex: 1
+  m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 1890910595786045333, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
 --- !u!1 &720506113
@@ -12720,11 +12790,11 @@ MeshCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 1
+  m_IsTrigger: 0
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 5
-  m_Convex: 1
+  m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 7396185897151158058, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
 --- !u!1 &774907049
@@ -13552,6 +13622,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 22fe894de70c885418b45a6f645f9740, type: 3}
       insertIndex: -1
       addedObject: {fileID: 138334903}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 22fe894de70c885418b45a6f645f9740, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 138334912}
   m_SourcePrefab: {fileID: 100100000, guid: 22fe894de70c885418b45a6f645f9740, type: 3}
 --- !u!1 &1039875625 stripped
 GameObject:
@@ -15163,7 +15236,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 5be0933a2661c2e4180dc9e97337d373, type: 3}
       propertyPath: m_Name
-      value: Bashful
+      value: Bashful_Maya
       objectReference: {fileID: 0}
     - target: {fileID: 5866666021909216657, guid: 5be0933a2661c2e4180dc9e97337d373, type: 3}
       propertyPath: m_Controller
@@ -15887,6 +15960,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 7103153012782714218, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1314873187}
+    - targetCorrespondingSourceObject: {fileID: 7103153012782714218, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1905718204}
     - targetCorrespondingSourceObject: {fileID: 6248574976466802116, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1148008995}
@@ -16427,11 +16503,11 @@ MeshCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 1
+  m_IsTrigger: 0
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 5
-  m_Convex: 1
+  m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: -9032552564599092584, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
 --- !u!64 &1563865903
@@ -21490,11 +21566,11 @@ MeshCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 1
+  m_IsTrigger: 0
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 5
-  m_Convex: 1
+  m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: -5711004569232092585, guid: f19e2dd57eb4c4542bcd6920d4976a07, type: 3}
 --- !u!64 &1791082785
@@ -21669,14 +21745,20 @@ MonoBehaviour:
       characterPortrait: {fileID: 21300000, guid: 01c7028661fccf04cb2626e2dfafb443, type: 3}
       dialogue: Tolong DIpercepat ya, saya sedang mengajar?
       isPlayer: 0
+      hasChoices: 0
+      choices: []
     - characterName: You
       characterPortrait: {fileID: 21300000, guid: f26a2d13d10857e4fb709d6abd30cfa7, type: 3}
       dialogue: Gak jadi pak
       isPlayer: 1
+      hasChoices: 0
+      choices: []
     - characterName: Pengajar
       characterPortrait: {fileID: 21300000, guid: 01c7028661fccf04cb2626e2dfafb443, type: 3}
       dialogue: Ok
       isPlayer: 0
+      hasChoices: 0
+      choices: []
   interactionRange: 15
   interactKey: 101
   interactionPrompt: {fileID: 1632664521355131613, guid: c5b47ffd20d72234e820c9891bc8d1df, type: 3}
@@ -21913,6 +21995,27 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: da01aeac9b616b24190f05a38f2060e9, type: 3}
+--- !u!65 &1905718204
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1563865876}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.02, y: 0.019999996, z: 0.019999998}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1922828685
 GameObject:
   m_ObjectHideFlags: 0
