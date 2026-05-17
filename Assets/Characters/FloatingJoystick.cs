@@ -99,6 +99,7 @@ public class FloatingJoystick : MonoBehaviour
     private RectTransform _rtSprint;
     private RectTransform _rtInteract;
     private RectTransform _rtViewToggle;
+    private RectTransform _rtPhone;          // ← PHONE button
 
     // ── Ukuran tombol (min/max) ───────────────────
     private const float MIN_BTN_SIZE = 60f;
@@ -109,11 +110,13 @@ public class FloatingJoystick : MonoBehaviour
     private readonly Vector2 _defSprint     = new Vector2(-200f,  110f);
     private readonly Vector2 _defInteract   = new Vector2(-200f,  250f);
     private readonly Vector2 _defViewToggle = new Vector2(-200f,  390f);
+    private readonly Vector2 _defPhone      = new Vector2(-200f,  530f); // ← default Phone: di atas TPP
 
     private const float DEF_JOYSTICK_SIZE    = 180f;
     private const float DEF_SPRINT_SIZE      = 120f;
     private const float DEF_INTERACT_SIZE    = 110f;
     private const float DEF_VIEW_TOGGLE_SIZE = 100f;
+    private const float DEF_PHONE_SIZE       = 100f;
 
     // ─────────────────────────────────────────────
     void Awake()
@@ -146,6 +149,14 @@ public class FloatingJoystick : MonoBehaviour
         {
             InteractPressed = false;
             _interactFrame  = -1;
+        }
+
+        // ── PC: Panah Atas = Toggle HP (kayak GTA IV) ──────────────
+        if (_inputMode == InputMode.PCKeyboard && Input.GetKeyDown(KeyCode.PageUp))
+        {
+            var pm = UnityEngine.Object.FindFirstObjectByType<PhoneManager>();
+            if (pm != null)
+                pm.TogglePhone();
         }
 
         // Auto-detect Unity Remote: jika di Editor dan ada touch input, pakai NativeTouch
@@ -627,6 +638,20 @@ public class FloatingJoystick : MonoBehaviour
             PlayerPrefs.DeleteKey("view_y");
         }
 
+        // ── Tombol PHONE (HP in-game) ─────────────
+        _rtPhone = CreateButtonWithRT(canvasGO.transform, "PhoneButton", "Phone",
+            _defPhone, new Vector2(1f, 0f),
+            new Color(0.9f, 0.6f, 0.1f, 0.5f), size: DEF_PHONE_SIZE,
+            onDown: () => {
+                // Cari PhoneManager dan toggle HP
+                var pm = UnityEngine.Object.FindFirstObjectByType<PhoneManager>();
+                if (pm != null)
+                    pm.TogglePhone();
+                else
+                    Debug.LogWarning("[FloatingJoystick] PhoneManager tidak ditemukan di scene!");
+            },
+            onUp: () => { });
+
         LoadLayout();
         StartCoroutine(FindCameraController());
 
@@ -690,6 +715,7 @@ public class FloatingJoystick : MonoBehaviour
         SetButtonHighlight(_rtInteract,   enabled);
         SetButtonHighlight(_rtViewToggle, enabled);
         SetButtonHighlight(_rtJoystick,   enabled);
+        SetButtonHighlight(_rtPhone,      enabled);
     }
 
     void SetButtonHighlight(RectTransform rt, bool on)
@@ -751,11 +777,12 @@ public class FloatingJoystick : MonoBehaviour
     /// </summary>
     public string GetSelectedButtonName()
     {
-        if (_selectedRT == null)         return null;
-        if (_selectedRT == _rtJoystick)  return "Joystick";
-        if (_selectedRT == _rtSprint)    return "RUN";
-        if (_selectedRT == _rtInteract)  return "INTERACT";
+        if (_selectedRT == null)          return null;
+        if (_selectedRT == _rtJoystick)   return "Joystick";
+        if (_selectedRT == _rtSprint)     return "RUN";
+        if (_selectedRT == _rtInteract)   return "INTERACT";
         if (_selectedRT == _rtViewToggle) return "TPP";
+        if (_selectedRT == _rtPhone)      return "PHONE";
         return null;
     }
 
@@ -768,6 +795,7 @@ public class FloatingJoystick : MonoBehaviour
         ResizeButton(_rtSprint,     delta);
         ResizeButton(_rtInteract,   delta);
         ResizeButton(_rtViewToggle, delta);
+        ResizeButton(_rtPhone,      delta);
     }
 
     /// <summary>
@@ -782,6 +810,7 @@ public class FloatingJoystick : MonoBehaviour
             "sprint"   => _rtSprint,
             "interact" => _rtInteract,
             "view"     => _rtViewToggle,
+            "phone"    => _rtPhone,
             _          => null
         };
         if (rt != null) ResizeButton(rt, delta);
@@ -803,6 +832,7 @@ public class FloatingJoystick : MonoBehaviour
         SaveRT("spr",  _rtSprint);
         SaveRT("int",  _rtInteract);
         SaveRT("view", _rtViewToggle);
+        SaveRT("phn",  _rtPhone);
         PlayerPrefs.Save();
         Debug.Log("[FloatingJoystick] Layout disimpan!");
     }
@@ -821,6 +851,7 @@ public class FloatingJoystick : MonoBehaviour
         LoadRT("spr",  _rtSprint,     _defSprint,     DEF_SPRINT_SIZE);
         LoadRT("int",  _rtInteract,   _defInteract,   DEF_INTERACT_SIZE);
         LoadRT("view", _rtViewToggle, _defViewToggle, DEF_VIEW_TOGGLE_SIZE);
+        LoadRT("phn",  _rtPhone,      _defPhone,      DEF_PHONE_SIZE);
     }
 
     void LoadRT(string key, RectTransform rt, Vector2 defaultPos, float defaultSize)
@@ -838,7 +869,7 @@ public class FloatingJoystick : MonoBehaviour
 
     public void ResetLayout()
     {
-        foreach (var k in new[] { "joy", "spr", "int", "view" })
+        foreach (var k in new[] { "joy", "spr", "int", "view", "phn" })
         {
             PlayerPrefs.DeleteKey(k + "_x");
             PlayerPrefs.DeleteKey(k + "_y");
@@ -850,6 +881,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtSprint      != null) { _rtSprint.anchoredPosition      = _defSprint;     ApplyResize(_rtSprint,     DEF_SPRINT_SIZE); }
         if (_rtInteract    != null) { _rtInteract.anchoredPosition    = _defInteract;   ApplyResize(_rtInteract,   DEF_INTERACT_SIZE); }
         if (_rtViewToggle  != null) { _rtViewToggle.anchoredPosition  = _defViewToggle; ApplyResize(_rtViewToggle, DEF_VIEW_TOGGLE_SIZE); }
+        if (_rtPhone       != null) { _rtPhone.anchoredPosition       = _defPhone;      ApplyResize(_rtPhone,      DEF_PHONE_SIZE); }
         Debug.Log("[FloatingJoystick] Layout direset!");
     }
 
@@ -862,6 +894,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtSprint      != null) _rtSprint.gameObject.SetActive(false);
         if (_rtInteract    != null) _rtInteract.gameObject.SetActive(false);
         if (_rtViewToggle  != null) _rtViewToggle.gameObject.SetActive(false);
+        if (_rtPhone       != null) _rtPhone.gameObject.SetActive(false);
     }
 
     public void ShowMobileUI()
@@ -870,6 +903,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtSprint      != null) _rtSprint.gameObject.SetActive(true);
         if (_rtInteract    != null) _rtInteract.gameObject.SetActive(true);
         if (_rtViewToggle  != null) _rtViewToggle.gameObject.SetActive(true);
+        if (_rtPhone       != null) _rtPhone.gameObject.SetActive(true);
     }
 
     // ═════════════════════════════════════════════
@@ -934,7 +968,7 @@ public class FloatingJoystick : MonoBehaviour
     // ═════════════════════════════════════════════
     bool IsTouchOnAnyButton(Vector2 screenPos)
     {
-        RectTransform[] buttons = { _rtSprint, _rtInteract, _rtViewToggle };
+        RectTransform[] buttons = { _rtSprint, _rtInteract, _rtViewToggle, _rtPhone };
         foreach (var rt in buttons)
         {
             if (rt == null || !rt.gameObject.activeSelf) continue;
@@ -946,7 +980,7 @@ public class FloatingJoystick : MonoBehaviour
 
     RectTransform GetTouchedButton(Vector2 screenPos)
     {
-        RectTransform[] buttons = { _rtJoystick, _rtSprint, _rtInteract, _rtViewToggle };
+        RectTransform[] buttons = { _rtJoystick, _rtSprint, _rtInteract, _rtViewToggle, _rtPhone };
         foreach (var rt in buttons)
         {
             if (rt == null) continue;
