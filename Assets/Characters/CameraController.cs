@@ -13,9 +13,15 @@ public class CameraController : MonoBehaviour
     public float mouseSensitivity  = 2f;
 
     [Header("Camera Collision")]
-    public float collisionRadius   = 0.3f;   // Radius sphere cast
-    public float minDistance       = 0.8f;   // Jarak minimum kamera ke karakter
-    public LayerMask collisionMask = -1;      // Layer yang dianggap penghalang (default semua)
+    public float collisionRadius   = 0.3f;
+    public float minDistance       = 0.8f;
+    public LayerMask collisionMask = -1;
+
+    [Header("Close Camera Pivot")]
+    [Tooltip("Height saat kamera dekat tembok — pivot naik ke wajah. (0,0) = pakai targetHeightOffset")]
+    public float closeHeightOffset  = 1.85f;
+    [Tooltip("Jarak kamera mulai transisi pivot naik ke wajah")]
+    public float closePivotDistance = 1.5f;
 
     [Header("First Person Settings")]
     public Vector3 fppOffset               = new Vector3(0, 1.85f, 0.5f);
@@ -110,52 +116,53 @@ public class CameraController : MonoBehaviour
         float scaledHeightOffset = targetHeightOffset * characterScale;
         Vector3 scaledTppOffset  = tppOffset * characterScale;
 
-        // Titik fokus (dada/pinggang karakter)
-        Vector3 targetPoint = target.position + Vector3.up * scaledHeightOffset;
+        // Titik fokus (dada/pinggang karakter) — tidak berubah
+        Vector3 lookTarget = target.position + Vector3.up * scaledHeightOffset;
 
-        // Posisi ideal kamera tanpa collision
-        Vector3 desiredPosition = targetPoint + rotation * scaledTppOffset;
+        // Arah kamera murni dari rotasi, jarak dari tppOffset.z
+        Vector3 desiredDir = rotation * Vector3.back;
+        float   idealDist  = Mathf.Abs(scaledTppOffset.z);
 
         // ── Camera Collision ──────────────────────
-        Vector3 finalPosition = GetCollisionPosition(targetPoint, desiredPosition);
+        float safeDist = GetSafeDistance(lookTarget, desiredDir, idealDist);
 
-        // ── Smooth follow ─────────────────────────
-        // Posisi sudah di-smooth di GetCollisionPosition, tinggal apply
-        transform.position = Vector3.Lerp(transform.position, finalPosition, tppSmoothSpeed * Time.deltaTime);
-        transform.LookAt(targetPoint);
+        // ── Camera Vertical Shift saat dekat objek ──
+        // Saat kamera terdesak dekat, geser posisi kamera ke ATAS
+        // tapi lookTarget tetap di dada — sehingga kamera melihat ke bawah sedikit
+        // dan wajah karakter masuk frame secara natural.
+        float closeT      = Mathf.Clamp01(1f - (safeDist - minDistance)
+                            / Mathf.Max(closePivotDistance - minDistance, 0.01f));
+        float vertShift   = Mathf.Lerp(0f, (closeHeightOffset - targetHeightOffset) * characterScale, closeT);
+        Vector3 camPos    = lookTarget + desiredDir * safeDist + Vector3.up * vertShift;
+
+        transform.position = camPos;
+        transform.LookAt(lookTarget);
     }
 
-    // Cek collision dengan smooth lerp agar tidak jitter
-    Vector3 GetCollisionPosition(Vector3 from, Vector3 to)
+    // Hitung jarak aman kamera dengan SphereCast — satu-satunya tempat smoothing.
+    float GetSafeDistance(Vector3 origin, Vector3 direction, float idealDist)
     {
-        Vector3 direction  = to - from;
-        float   idealDist  = direction.magnitude;
-        float   targetDist = idealDist;
-
-        // Mulai SphereCast sedikit di depan karakter
-        // supaya tidak mendeteksi collider karakter sendiri
-        float   startOffset = 0.5f * characterScale;
-        Vector3 castOrigin  = from + direction.normalized * startOffset;
-        float   castDist    = Mathf.Max(idealDist - startOffset, 0f);
+        float targetDist  = idealDist;
+        float startOffset = 0.15f;
+        Vector3 castOrigin = origin + direction * startOffset;
+        float   castDist   = Mathf.Max(idealDist - startOffset, 0f);
 
         if (castDist > 0f && Physics.SphereCast(
             castOrigin,
             collisionRadius,
-            direction.normalized,
+            direction,
             out RaycastHit hit,
             castDist,
             collisionMask,
             QueryTriggerInteraction.Ignore))
         {
-            // Ada penghalang nyata — dekatkan kamera
             targetDist = Mathf.Max(startOffset + hit.distance - collisionRadius, minDistance);
         }
 
-        // Mendekat cepat saat ada tembok, menjauh lambat saat tembok hilang
-        float smoothSpeed = targetDist < _currentDistance ? 20f : 4f;
-        _currentDistance  = Mathf.Lerp(_currentDistance, targetDist, Time.deltaTime * smoothSpeed);
-
-        return from + direction.normalized * _currentDistance;
+        // Mendekat cepat saat ada tembok, menjauh pelan saat tembok hilang
+        float speed       = targetDist < _currentDistance ? 25f : 5f;
+        _currentDistance  = Mathf.Lerp(_currentDistance, targetDist, Time.deltaTime * speed);
+        return _currentDistance;
     }
 
     void UpdateFirstPerson()

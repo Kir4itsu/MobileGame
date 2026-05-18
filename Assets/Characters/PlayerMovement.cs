@@ -265,6 +265,17 @@ public class PlayerMovement : MonoBehaviourPun
             r.enabled = visible;
     }
 
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        Rigidbody hitRb = hit.collider.attachedRigidbody;
+        if (hitRb == null || !hitRb.isKinematic) return;
+
+        // Push player menjauh dari NPC
+        Vector3 pushDir = hit.moveDirection;
+        pushDir.y = 0f;
+        controller.Move(-pushDir * 0.1f);
+    }
+
     void OnGUI()
     {
         if (!IsLocalPlayer) return;

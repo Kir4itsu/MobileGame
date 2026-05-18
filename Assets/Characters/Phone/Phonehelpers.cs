@@ -54,6 +54,9 @@ public class SliderDragEvents : MonoBehaviour, IPointerDownHandler, IPointerUpHa
 // ══════════════════════════════════════════════════════════════════
 //  3. PHONE NAVIGATOR
 //  Navigasi antar panel di HP — pakai List bukan Stack
+//
+//  FIX: Back button selalu tampil (di Home pun tetap ada).
+//       GoBack() saat di Home → tutup HP via PhoneManager.
 // ══════════════════════════════════════════════════════════════════
 public class PhoneNavigator : MonoBehaviour
 {
@@ -63,8 +66,12 @@ public class PhoneNavigator : MonoBehaviour
     [Header("Navigation")]
     public Button backButton;
 
+    [Header("Phone Manager")]
+    [Tooltip("Assign PhoneManager di sini agar GoBack() bisa menutup HP saat sudah di Home.")]
+    public PhoneManager phoneManager;
+
     private GameObject       _currentPanel;
-    private List<GameObject> _panelHistory = new List<GameObject>(); // ← List, bukan Stack
+    private List<GameObject> _panelHistory = new List<GameObject>();
 
     void Start()
     {
@@ -83,32 +90,41 @@ public class PhoneNavigator : MonoBehaviour
         {
             _currentPanel.SetActive(false);
             if (!isHome)
-                _panelHistory.Add(_currentPanel); // ← Add, bukan Push
+                _panelHistory.Add(_currentPanel);
         }
 
         _currentPanel = panel;
         _currentPanel.SetActive(true);
 
+        // Back button selalu tampil — di Home tetap muncul untuk tutup HP
         if (backButton != null)
-            backButton.gameObject.SetActive(_panelHistory.Count > 0);
+            backButton.gameObject.SetActive(true);
     }
 
     public void GoBack()
     {
-        if (_panelHistory.Count == 0) return;
+        // Sudah di Home (history kosong) → tutup HP
+        if (_panelHistory.Count == 0)
+        {
+            if (phoneManager != null)
+                phoneManager.ClosePhone();
+            else
+                Debug.LogWarning("[PhoneNavigator] phoneManager belum di-assign! HP tidak bisa ditutup via GoBack.");
+            return;
+        }
 
         if (_currentPanel != null)
             _currentPanel.SetActive(false);
 
-        // Ambil panel terakhir dari list (simulasi Pop)
         int last = _panelHistory.Count - 1;
         _currentPanel = _panelHistory[last];
         _panelHistory.RemoveAt(last);
 
         _currentPanel.SetActive(true);
 
+        // Back button tetap tampil
         if (backButton != null)
-            backButton.gameObject.SetActive(_panelHistory.Count > 0);
+            backButton.gameObject.SetActive(true);
     }
 
     public void GoHome()

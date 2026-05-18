@@ -456,7 +456,13 @@ public class DialogueManager : MonoBehaviour
 
         StartCoroutine(ShowDialoguePanel());
 
-        if (FloatingJoystick.Instance != null) FloatingJoystick.Instance.HideMobileUI();
+        // FIX: Paksa tutup Phone jika sedang terbuka sebelum dialogue dimulai
+        // supaya dialogue UI tidak tertimpa PhoneUI.
+        var phoneManager = UnityEngine.Object.FindFirstObjectByType<PhoneManager>();
+        if (phoneManager != null && phoneManager.IsPhoneOpen)
+            phoneManager.ClosePhone();
+
+        if (FloatingJoystick.Instance != null) FloatingJoystick.Instance.HideForDialogue();
         if (MinimapSystem.Instance    != null) MinimapSystem.Instance.HideMinimap();
         if (SettingsMenu.Instance     != null) SettingsMenu.Instance.HideSettingsButton();
 

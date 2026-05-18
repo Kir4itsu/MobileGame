@@ -152,11 +152,11 @@ public class PhoneUIBuilder : MonoBehaviour
         _phoneUI.transform.SetParent(_canvas.transform, false);
 
         var rt = _phoneUI.AddComponent<RectTransform>();
-        rt.anchorMin        = new Vector2(0.5f, 0.5f);
-        rt.anchorMax        = new Vector2(0.5f, 0.5f);
-        rt.pivot            = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta        = new Vector2(320f, 540f);
+        rt.anchorMin        = new Vector2(1f, 0f);
+        rt.anchorMax        = new Vector2(1f, 0f);
+        rt.pivot            = new Vector2(1f, 0f);
+        rt.anchoredPosition = new Vector2(-120f, 80f);
+        rt.sizeDelta        = new Vector2(260f, 460f);
 
         // Bodi HP (hitam dengan border abu-abu)
         var body = new GameObject("PhoneBody");
@@ -210,27 +210,32 @@ public class PhoneUIBuilder : MonoBehaviour
         var bg = bar.AddComponent<Image>();
         bg.color = C_BG_HEADER;
 
-        // Sinyal (4 bar)
+        // Sinyal — 4 bar naik dari bawah (seperti sinyal HP asli)
         var signalGO = new GameObject("Signal");
         signalGO.transform.SetParent(bar.transform, false);
         var srt = signalGO.AddComponent<RectTransform>();
-        srt.anchorMin = new Vector2(0f, 0f); srt.anchorMax = new Vector2(0f, 1f);
-        srt.pivot     = new Vector2(0f, 0.5f);
+        srt.anchorMin        = new Vector2(0f, 0.5f);
+        srt.anchorMax        = new Vector2(0f, 0.5f);
+        srt.pivot            = new Vector2(0f, 0.5f);
         srt.anchoredPosition = new Vector2(8f, 0f);
-        srt.sizeDelta = new Vector2(20f, 0f);
-        signalGO.AddComponent<HorizontalLayoutGroup>().spacing = 2f;
+        srt.sizeDelta        = new Vector2(22f, 16f); // lebar total area sinyal
 
-        float[] barHeights = { 0.3f, 0.5f, 0.7f, 1f };
-        foreach (var h in barHeights)
+        // 4 bar dengan tinggi makin besar (3px, 5px, 8px, 11px) — style sinyal HP
+        float[] barHeightsPx = { 4f, 7f, 10f, 14f };
+        float barW = 3.5f;
+        float barSpacing = 1.8f;
+        for (int bi = 0; bi < barHeightsPx.Length; bi++)
         {
-            var b = new GameObject("Bar");
+            var b    = new GameObject("Bar" + bi);
             b.transform.SetParent(signalGO.transform, false);
-            var brt = b.AddComponent<RectTransform>();
-            brt.anchorMin = new Vector2(0f, 0f);
-            brt.anchorMax = new Vector2(0f, h);
-            brt.sizeDelta = new Vector2(3f, 0f);
-            var bimg = b.AddComponent<Image>();
-            bimg.color = C_GREEN;
+            var brt  = b.AddComponent<RectTransform>();
+            // Posisi dari kiri, rata bawah
+            brt.anchorMin        = new Vector2(0f, 0f);
+            brt.anchorMax        = new Vector2(0f, 0f);
+            brt.pivot            = new Vector2(0f, 0f);
+            brt.anchoredPosition = new Vector2(bi * (barW + barSpacing), 0f);
+            brt.sizeDelta        = new Vector2(barW, barHeightsPx[bi]);
+            b.AddComponent<Image>().color = C_GREEN;
         }
 
         // Jam (tengah)
@@ -248,20 +253,69 @@ public class PhoneUIBuilder : MonoBehaviour
         _clockText.alignment = TextAnchor.MiddleCenter;
         _clockText.text      = System.DateTime.Now.ToString("ddd HH:mm").ToUpper();
 
-        // Baterai (kanan)
+        // Baterai — icon + persentase real dari device
         var batGO = new GameObject("Battery");
         batGO.transform.SetParent(bar.transform, false);
         var brt2 = batGO.AddComponent<RectTransform>();
-        brt2.anchorMin = new Vector2(1f, 0f); brt2.anchorMax = new Vector2(1f, 1f);
-        brt2.pivot     = new Vector2(1f, 0.5f);
-        brt2.anchoredPosition = new Vector2(-8f, 0f);
-        brt2.sizeDelta = new Vector2(24f, 0f);
-        var batTxt        = batGO.AddComponent<Text>();
-        batTxt.font       = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        batTxt.fontSize   = 10;
-        batTxt.color      = C_GREEN;
-        batTxt.alignment  = TextAnchor.MiddleRight;
-        batTxt.text       = "▮";
+        brt2.anchorMin        = new Vector2(1f, 0f);
+        brt2.anchorMax        = new Vector2(1f, 1f);
+        brt2.pivot            = new Vector2(1f, 0.5f);
+        brt2.anchoredPosition = new Vector2(-6f, 0f);
+        brt2.sizeDelta        = new Vector2(52f, 0f);  // lebih lebar untuk teks %
+
+        // Layout horizontal: [icon baterai] [persentase]
+        var batLayout = batGO.AddComponent<HorizontalLayoutGroup>();
+        batLayout.childAlignment        = TextAnchor.MiddleRight;
+        batLayout.spacing               = 2f;
+        batLayout.childForceExpandWidth = false;
+        batLayout.childControlWidth     = false;
+        batLayout.padding.right         = 0;
+
+        // Icon baterai (karakter unicode)
+        var iconGO       = new GameObject("BatIcon");
+        iconGO.transform.SetParent(batGO.transform, false);
+        var iconRT       = iconGO.AddComponent<RectTransform>();
+        iconRT.sizeDelta = new Vector2(12f, 0f);
+        var iconTxt      = iconGO.AddComponent<Text>();
+        iconTxt.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        iconTxt.fontSize  = 13;
+        iconTxt.color     = C_GREEN;
+        iconTxt.alignment = TextAnchor.MiddleCenter;
+        iconTxt.text      = "▮"; // ▮
+
+        // Persentase baterai
+        var pctGO        = new GameObject("BatPercent");
+        pctGO.transform.SetParent(batGO.transform, false);
+        var pctRT        = pctGO.AddComponent<RectTransform>();
+        pctRT.sizeDelta  = new Vector2(30f, 0f);
+        var pctTxt       = pctGO.AddComponent<Text>();
+        pctTxt.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        pctTxt.fontSize  = 10;
+        pctTxt.color     = C_GREEN;
+        pctTxt.alignment = TextAnchor.MiddleLeft;
+
+        // Baca baterai device — SystemInfo.batteryLevel: 0..1 (-1 = tidak diketahui)
+        float batLevel = SystemInfo.batteryLevel;
+        pctTxt.text = batLevel >= 0f
+            ? Mathf.RoundToInt(batLevel * 100f) + "%"
+            : "??%";
+
+        // Warna icon sesuai level baterai
+        if (batLevel >= 0f)
+        {
+            Color batColor = batLevel > 0.2f ? C_GREEN
+                           : batLevel > 0.1f ? new Color(1f, 0.6f, 0f, 1f) // oranye
+                           :                   new Color(0.9f, 0.2f, 0.2f, 1f); // merah
+            iconTxt.color = batColor;
+            pctTxt.color  = batColor;
+        }
+
+        // Attach StatusBarUpdater untuk update jam + baterai tiap menit
+        var updater         = bar.AddComponent<StatusBarUpdater>();
+        updater.clockText   = _clockText;
+        updater.batteryText = pctTxt;
+        updater.batteryIcon = iconTxt;
+        updater.greenColor  = C_GREEN;
     }
 
     // ─────────────────────────────────────────────
@@ -278,7 +332,7 @@ public class PhoneUIBuilder : MonoBehaviour
         panel.AddComponent<Image>().color = C_BG_PANEL;
 
         // Header judul
-        var header = MakeText(panel.transform, "PHONE", 14, C_WHITE, TextAnchor.UpperLeft, FontStyle.Bold);
+        var header = MakeText(panel.transform, "PHONE", 18, C_WHITE, TextAnchor.UpperLeft, FontStyle.Bold);
         var hrt    = header.GetComponent<RectTransform>();
         hrt.anchorMin = new Vector2(0f, 1f);
         hrt.anchorMax = new Vector2(1f, 1f);
@@ -325,7 +379,7 @@ public class PhoneUIBuilder : MonoBehaviour
         border.AddComponent<Image>().color = selected ? C_GREEN : new Color(0,0,0,0);
 
         // Label text
-        var txtGO = MakeText(item.transform, label, 13,
+        var txtGO = MakeText(item.transform, label, 16,
             selected ? C_GREEN : C_WHITE,
             TextAnchor.MiddleLeft,
             selected ? FontStyle.Bold : FontStyle.Normal);
@@ -352,7 +406,8 @@ public class PhoneUIBuilder : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────
-    //  NAV BAR
+    //  NAV BAR — Android style (Recents ▣  Home ⬤  Back ◀)
+    //  Back 1x = GoBack in-app, Back 2x cepat = ClosePhone
     // ─────────────────────────────────────────────
     void BuildNavBar(Transform parent)
     {
@@ -362,7 +417,7 @@ public class PhoneUIBuilder : MonoBehaviour
         rt.anchorMin = new Vector2(0f, 0f);
         rt.anchorMax = new Vector2(1f, 0.07f);
         rt.offsetMin = rt.offsetMax = Vector2.zero;
-        bar.AddComponent<Image>().color = C_BG_HEADER;
+        bar.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.04f, 1f);
 
         // Separator garis atas
         var sep = new GameObject("Sep");
@@ -373,31 +428,44 @@ public class PhoneUIBuilder : MonoBehaviour
         srt.anchoredPosition = Vector2.zero; srt.sizeDelta = new Vector2(0f, 1f);
         sep.AddComponent<Image>().color = C_SEPARATOR;
 
-        // "Select" kiri
-        var selGO = MakeText(bar.transform, "Select", 12, C_GREEN, TextAnchor.MiddleLeft, FontStyle.Bold);
-        var srt2  = selGO.GetComponent<RectTransform>();
-        srt2.anchorMin = new Vector2(0f, 0f); srt2.anchorMax = new Vector2(0.5f, 1f);
-        srt2.offsetMin = new Vector2(12f, 0f); srt2.offsetMax = Vector2.zero;
+        // Recents (kiri)
+        var recGO  = MakeNavBtn(bar.transform, "RecentsButton",  "REC",  new Vector2(0.15f, 0.5f));
+        // Home (tengah)
+        var homeGO = MakeNavBtn(bar.transform, "HomeNavButton",  "HOME", new Vector2(0.5f,  0.5f));
+        // Back (kanan) — nama "BackButton" dipakai WireScripts untuk PhoneNavigator
+        var backGO = MakeNavBtn(bar.transform, "BackButton",     "BACK", new Vector2(0.85f, 0.5f));
 
-        // "Back" kanan — ini juga tombol back
-        var backGO = new GameObject("BackButton");
-        backGO.transform.SetParent(bar.transform, false);
-        var brt = backGO.AddComponent<RectTransform>();
-        brt.anchorMin = new Vector2(0.5f, 0f); brt.anchorMax = new Vector2(1f, 1f);
-        brt.offsetMin = Vector2.zero; brt.offsetMax = new Vector2(-12f, 0f);
-        var backBG = backGO.AddComponent<Image>();
-        backBG.color = Color.clear;
-        var backBtn = backGO.AddComponent<Button>();
-        backBtn.targetGraphic = backBG;
-        var backCB = backBtn.colors;
-        backCB.highlightedColor = new Color(1,1,1,0.05f);
-        backBtn.colors = backCB;
+        // Attach AndroidNavController untuk logika back 2x = close
+        var navCtrl = bar.AddComponent<AndroidNavController>();
+        navCtrl.backButton = backGO.GetComponent<Button>();
+        navCtrl.homeButton = homeGO.GetComponent<Button>();
 
-        var backTxtGO = MakeText(backGO.transform, "Back", 12, C_RED, TextAnchor.MiddleRight, FontStyle.Bold);
-        FillRect(backTxtGO.GetComponent<RectTransform>());
+        bar.name = "NavBar";
+    }
 
-        // Wire ke PhoneNavigator di WireScripts
-        backGO.name = "BackButton";
+    GameObject MakeNavBtn(Transform parent, string goName, string icon, Vector2 anchorPos)
+    {
+        var go = new GameObject(goName);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = anchorPos; rt.anchorMax = anchorPos;
+        rt.pivot     = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(60f, 28f);  // lebih lebar agar teks muat
+
+        var bg  = go.AddComponent<Image>();
+        bg.color = new Color(0.15f, 0.15f, 0.15f, 0.8f);
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = bg;
+        var cb  = btn.colors;
+        cb.normalColor      = new Color(0.15f, 0.15f, 0.15f, 0.8f);
+        cb.highlightedColor = new Color(0.3f,  0.3f,  0.3f,  1f);
+        cb.pressedColor     = new Color(0.05f, 0.05f, 0.05f, 1f);
+        btn.colors = cb;
+
+        var txtGO = MakeText(go.transform, icon, 11, C_WHITE, TextAnchor.MiddleCenter, FontStyle.Bold);
+        FillRect(txtGO.GetComponent<RectTransform>());
+        return go;
     }
 
     // ═════════════════════════════════════════════════════════════
@@ -421,7 +489,7 @@ public class PhoneUIBuilder : MonoBehaviour
         hrt.offsetMin = hrt.offsetMax = Vector2.zero;
         header.AddComponent<Image>().color = C_BG_HEADER;
 
-        var htxt = MakeText(header.transform, "MUSIC PLAYER", 12, C_GREEN, TextAnchor.MiddleLeft, FontStyle.Bold);
+        var htxt = MakeText(header.transform, "MUSIC PLAYER", 15, C_GREEN, TextAnchor.MiddleLeft, FontStyle.Bold);
         var htrt = htxt.GetComponent<RectTransform>();
         FillRect(htrt); htrt.offsetMin = new Vector2(12f, 0f);
 
@@ -443,14 +511,14 @@ public class PhoneUIBuilder : MonoBehaviour
         irt.anchorMin = new Vector2(0f, 0.47f); irt.anchorMax = new Vector2(1f, 0.57f);
         irt.offsetMin = new Vector2(12f, 0f); irt.offsetMax = new Vector2(-12f, 0f);
 
-        var titleTmp = MakeTMP(infoGO.transform, "Pilih Lagu", 14, C_WHITE, TextAlignmentOptions.Left);
+        var titleTmp = MakeTMP(infoGO.transform, "Pilih Lagu", 17, C_WHITE, TextAlignmentOptions.Left);
         var trt = titleTmp.GetComponent<RectTransform>();
         trt.anchorMin = new Vector2(0f, 0.5f); trt.anchorMax = Vector2.one;
         FillOffset(trt);
         titleTmp.fontStyle = FontStyles.Bold;
         titleTmp.name = "SongTitleText";
 
-        var artistTmp = MakeTMP(infoGO.transform, "Unknown Artist", 11, C_GRAY, TextAlignmentOptions.Left);
+        var artistTmp = MakeTMP(infoGO.transform, "Unknown Artist", 13, C_GRAY, TextAlignmentOptions.Left);
         var art2 = artistTmp.GetComponent<RectTransform>();
         art2.anchorMin = Vector2.zero; art2.anchorMax = new Vector2(1f, 0.5f);
         FillOffset(art2);
@@ -696,7 +764,17 @@ public class PhoneUIBuilder : MonoBehaviour
         if (backBtn != null)
             _phoneNavigator.backButton = backBtn;
 
-        // ── MusicPlayerPhone ──────────────────────────────────────
+        // Wire AndroidNavController (back 2x = close HP, home = GoHome)
+        var navCtrl = _phoneUI?.transform.Find("PhoneScreen/NavBar")?.GetComponent<AndroidNavController>();
+        if (navCtrl != null)
+        {
+            navCtrl.phoneNavigator = _phoneNavigator;
+            navCtrl.phoneManager   = _phoneManager;
+        }
+
+        // ── MusicPlayerPhone — harus di-assign DULU sebelum viz ──────
+        // FIX: urutan sebelumnya terbalik — viz diset sebelum _musicPlayer ada,
+        // sehingga _musicPlayer.visualizer tidak pernah ter-assign.
         _musicPlayer = gameObject.GetComponent<MusicPlayerPhone>() ?? gameObject.AddComponent<MusicPlayerPhone>();
 
         // AudioSource khusus musik
@@ -722,13 +800,28 @@ public class PhoneUIBuilder : MonoBehaviour
         if (playlistContent != null)
             _musicPlayer.playlistContentParent = playlistContent;
 
-        // Assign songs jika ada
+        // FIX: Assign songs SEBELUM Start() — supaya BuildPlaylistUI() punya data.
+        // Setelah assign, panggil RebuildPlaylist() manual karena Start() sudah lewat.
         if (songs != null && songs.Length > 0)
         {
             _musicPlayer.playlist.Clear();
             foreach (var s in songs)
                 _musicPlayer.playlist.Add(s);
+            // Rebuild playlist UI sekarang karena Start() sudah dipanggil lebih awal
+            _musicPlayer.RebuildPlaylist();
         }
+
+        // Wire Visualizer — dilakukan SETELAH _musicPlayer ada
+        // FIX: sebelumnya viz di-assign sebelum _musicPlayer, jadi visualizer field null
+        var viz = _musicPanel.GetComponentInChildren<VisualizerAnimator>(true);
+        if (viz != null)
+        {
+            _musicPlayer.visualizer = viz;
+            viz.isPlaying = false; // pastikan diam di awal
+        }
+
+        // Attach hook untuk hide/show tombol saat HP buka/tutup
+        gameObject.AddComponent<PhoneVisibilityHook>();
 
         Debug.Log("[PhoneUIBuilder] Semua script sudah di-wire!");
     }
@@ -879,7 +972,7 @@ public class VisualizerAnimator : MonoBehaviour
     }
 
     // Dipanggil dari MusicPlayerPhone — aktifkan saat playing
-    public bool isPlaying = true;
+    public bool isPlaying = false; // FIX: default false — diam sampai musik benar-benar play
 
     void Update()
     {
@@ -902,5 +995,156 @@ public class VisualizerAnimator : MonoBehaviour
             _bars[i].anchorMin = a;
             _bars[i].anchorMax = b;
         }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════
+//  STATUS BAR UPDATER
+//  Update jam tiap 30 detik + baterai tiap 60 detik
+// ═════════════════════════════════════════════════════════════════
+public class StatusBarUpdater : MonoBehaviour
+{
+    [HideInInspector] public Text  clockText;
+    [HideInInspector] public Text  batteryText;
+    [HideInInspector] public Text  batteryIcon;
+    [HideInInspector] public Color greenColor;
+
+    private float _clockTimer   = 0f;
+    private float _batteryTimer = 0f;
+
+    void Update()
+    {
+        _clockTimer   += Time.deltaTime;
+        _batteryTimer += Time.deltaTime;
+
+        // Update jam tiap 30 detik
+        if (_clockTimer >= 30f)
+        {
+            _clockTimer = 0f;
+            if (clockText != null)
+                clockText.text = System.DateTime.Now.ToString("ddd HH:mm").ToUpper();
+        }
+
+        // Update baterai tiap 60 detik
+        if (_batteryTimer >= 60f)
+        {
+            _batteryTimer = 0f;
+            UpdateBattery();
+        }
+    }
+
+    void UpdateBattery()
+    {
+        float level = SystemInfo.batteryLevel;
+
+        if (batteryText != null)
+            batteryText.text = level >= 0f ? Mathf.RoundToInt(level * 100f) + "%" : "??%";
+
+        if (level >= 0f)
+        {
+            Color c = level > 0.2f ? greenColor
+                    : level > 0.1f ? new Color(1f, 0.6f, 0f, 1f)
+                    :                new Color(0.9f, 0.2f, 0.2f, 1f);
+            if (batteryText != null) batteryText.color = c;
+            if (batteryIcon != null) batteryIcon.color = c;
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════
+//  PHONE VISIBILITY HOOK
+//  Monitor state HP — hide tombol FloatingJoystick saat HP buka,
+//  show lagi saat HP tutup. Attach otomatis oleh PhoneUIBuilder.
+//
+//  FIX:
+//  - _pm tidak lagi dicari di Start() saja; dicari ulang di Update()
+//    jika null, supaya tidak gagal karena race condition antar Start().
+//  - FloatingJoystick.Instance juga dicek tiap Update() karena
+//    FloatingJoystick pakai DontDestroyOnLoad dan bisa saja belum
+//    ada pada frame pertama.
+//  - HideMobileUI() / ShowMobileUI() sudah tidak mengubah
+//    canvas.sortingOrder, sehingga PhoneUI tetap bisa menerima tap.
+// ═════════════════════════════════════════════════════════════════
+public class PhoneVisibilityHook : MonoBehaviour
+{
+    private PhoneManager _pm;
+    private bool         _lastState = false;
+
+    void Start()
+    {
+        _pm = GetComponent<PhoneManager>() ?? FindFirstObjectByType<PhoneManager>();
+    }
+
+    void Update()
+    {
+        // Coba cari PhoneManager jika belum ada (race condition Start)
+        if (_pm == null)
+        {
+            _pm = FindFirstObjectByType<PhoneManager>();
+            if (_pm == null) return;
+        }
+
+        bool isOpen = _pm.IsPhoneOpen;
+        if (isOpen == _lastState) return;
+        _lastState = isOpen;
+
+        // Coba ambil FloatingJoystick — bisa saja belum ready di frame pertama
+        FloatingJoystick joystick = FloatingJoystick.Instance;
+        if (joystick == null) return;
+
+        if (isOpen)
+            joystick.HideMobileUI();
+        else
+            joystick.ShowMobileUI();
+    }
+}
+// ═════════════════════════════════════════════════════════════════
+//  ANDROID NAV CONTROLLER
+//  Navbar Android-style di dalam UI HP.
+//  Back 1x  = GoBack (kembali panel sebelumnya)
+//  Back 2x  = ClosePhone (tutup HP)
+//  Home     = GoHome (kembali ke home panel)
+// ═════════════════════════════════════════════════════════════════
+public class AndroidNavController : MonoBehaviour
+{
+    [HideInInspector] public Button         backButton;
+    [HideInInspector] public Button         homeButton;
+    [HideInInspector] public PhoneNavigator phoneNavigator;
+    [HideInInspector] public PhoneManager   phoneManager;
+
+    private float _lastBackTime  = -999f;
+    private const float DOUBLE_TAP = 0.4f; // detik maksimal jarak 2 tap dianggap double
+
+    void Start()
+    {
+        if (backButton != null)
+            backButton.onClick.AddListener(OnBackPressed);
+
+        if (homeButton != null)
+            homeButton.onClick.AddListener(OnHomePressed);
+    }
+
+    void OnBackPressed()
+    {
+        float now = Time.unscaledTime;
+
+        if (now - _lastBackTime <= DOUBLE_TAP)
+        {
+            // Double tap → tutup HP
+            _lastBackTime = -999f;
+            phoneManager?.ClosePhone();
+        }
+        else
+        {
+            // Single tap → GoBack dalam app
+            _lastBackTime = now;
+            if (phoneNavigator != null)
+                phoneNavigator.GoBack();
+        }
+    }
+
+    void OnHomePressed()
+    {
+        phoneNavigator?.GoHome();
     }
 }

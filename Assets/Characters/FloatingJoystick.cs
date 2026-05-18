@@ -151,12 +151,53 @@ public class FloatingJoystick : MonoBehaviour
             _interactFrame  = -1;
         }
 
-        // ── PC: Panah Atas = Toggle HP (kayak GTA IV) ──────────────
+        // ── PC: PageUp = Toggle HP ──────────────────────────────────
         if (_inputMode == InputMode.PCKeyboard && Input.GetKeyDown(KeyCode.PageUp))
         {
             var pm = UnityEngine.Object.FindFirstObjectByType<PhoneManager>();
             if (pm != null)
                 pm.TogglePhone();
+        }
+
+        // ── PC Shortcut saat HP terbuka ─────────────────────────────
+        if (_inputMode == InputMode.PCKeyboard)
+        {
+            var pm = UnityEngine.Object.FindFirstObjectByType<PhoneManager>();
+            if (pm != null && pm.IsPhoneOpen)
+            {
+                var nav = UnityEngine.Object.FindFirstObjectByType<PhoneNavigator>();
+                var music = UnityEngine.Object.FindFirstObjectByType<MusicPlayerPhone>();
+
+                // M = Music Player - cari termasuk inactive objects
+                if (Input.GetKeyDown(KeyCode.M) && nav != null)
+                {
+                    // Cari MusicPanel termasuk yang inactive (SetActive false)
+                    GameObject musicPanel = null;
+                    var allObjects = UnityEngine.Object.FindObjectsByType<Transform>(
+                        UnityEngine.FindObjectsInactive.Include,
+                        UnityEngine.FindObjectsSortMode.None);
+                    foreach (var t in allObjects)
+                        if (t.name == "MusicPanel") { musicPanel = t.gameObject; break; }
+                    if (musicPanel != null) nav.OpenPanel(musicPanel);
+                    else Debug.LogWarning("[Joystick] MusicPanel tidak ditemukan!");
+                }
+                // Escape / Backspace = Back
+                if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+                {
+                    if (nav != null) nav.GoBack();
+                }
+                // H = Home
+                if (Input.GetKeyDown(KeyCode.H) && nav != null)
+                    nav.GoHome();
+
+                // Kontrol music saat Music Player aktif
+                if (music != null)
+                {
+                    if (Input.GetKeyDown(KeyCode.Space))  music.TogglePlayPause();  // Space = Play/Pause
+                    if (Input.GetKeyDown(KeyCode.Period)) music.NextSong();          // . = Next
+                    if (Input.GetKeyDown(KeyCode.Comma))  music.PrevSong();          // , = Prev
+                }
+            }
         }
 
         // Auto-detect Unity Remote: jika di Editor dan ada touch input, pakai NativeTouch
@@ -887,23 +928,53 @@ public class FloatingJoystick : MonoBehaviour
 
     // ═════════════════════════════════════════════
     //  SHOW / HIDE UI
+    //
+    //  FIX: Tidak ada manipulasi canvas.sortingOrder atau canvasRaycaster.
+    //  Canvas FloatingJoystick terpisah dari canvas PhoneUI/DialogueUI.
+    //  Cukup SetActive per tombol — tidak ada efek samping.
     // ═════════════════════════════════════════════
+
+    /// <summary>
+    /// Sembunyikan semua tombol HUD saat Phone dibuka.
+    /// Joystick ikut disembunyikan karena HP mode tidak butuh kontrol gerak.
+    /// </summary>
+    /// <summary>
+    /// Dipanggil saat Phone dibuka.
+    /// Joystick TETAP tampil — player masih butuh joystick di layar.
+    /// Hanya tombol Phone/TPP/Interact/Run yang disembunyikan.
+    /// </summary>
     public void HideMobileUI()
     {
-        if (_rtJoystick   != null) _rtJoystick.gameObject.SetActive(false);
-        if (_rtSprint      != null) _rtSprint.gameObject.SetActive(false);
-        if (_rtInteract    != null) _rtInteract.gameObject.SetActive(false);
-        if (_rtViewToggle  != null) _rtViewToggle.gameObject.SetActive(false);
-        if (_rtPhone       != null) _rtPhone.gameObject.SetActive(false);
+        // _rtJoystick TIDAK disembunyikan — joystick tetap kelihatan saat Phone buka
+        if (_rtSprint     != null) _rtSprint.gameObject.SetActive(false);
+        if (_rtInteract   != null) _rtInteract.gameObject.SetActive(false);
+        if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(false);
+        if (_rtPhone      != null) _rtPhone.gameObject.SetActive(false);
     }
 
+    /// <summary>
+    /// Dipanggil saat Dialogue aktif.
+    /// Joystick IKUT disembunyikan — player tidak bisa gerak saat dialogue.
+    /// </summary>
+    public void HideForDialogue()
+    {
+        if (_rtJoystick   != null) _rtJoystick.gameObject.SetActive(false);
+        if (_rtSprint     != null) _rtSprint.gameObject.SetActive(false);
+        if (_rtInteract   != null) _rtInteract.gameObject.SetActive(false);
+        if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(false);
+        if (_rtPhone      != null) _rtPhone.gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// Tampilkan kembali semua tombol HUD dan joystick.
+    /// </summary>
     public void ShowMobileUI()
     {
         if (_rtJoystick   != null) _rtJoystick.gameObject.SetActive(true);
-        if (_rtSprint      != null) _rtSprint.gameObject.SetActive(true);
-        if (_rtInteract    != null) _rtInteract.gameObject.SetActive(true);
-        if (_rtViewToggle  != null) _rtViewToggle.gameObject.SetActive(true);
-        if (_rtPhone       != null) _rtPhone.gameObject.SetActive(true);
+        if (_rtSprint     != null) _rtSprint.gameObject.SetActive(true);
+        if (_rtInteract   != null) _rtInteract.gameObject.SetActive(true);
+        if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(true);
+        if (_rtPhone      != null) _rtPhone.gameObject.SetActive(true);
     }
 
     // ═════════════════════════════════════════════

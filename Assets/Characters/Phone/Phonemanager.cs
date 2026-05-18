@@ -7,7 +7,15 @@ using UnityEngine.UI;
 /// 1. Buat GameObject kosong, attach script ini
 /// 2. Assign phoneUI (Panel HP), phoneButton (tombol floating), openSound, closeSound
 /// 3. Untuk PC: tekan panah atas untuk toggle HP
-/// 4. Untuk Android: tap tombol floating
+/// 4. Untuk Android: tap tombol floating, atau tekan Back 2x (Back pertama = ke Home, Back kedua = tutup HP)
+///
+/// FIX:
+/// - HideMobileUI / ShowMobileUI sekarang dipanggil LANGSUNG di dalam TogglePhone()
+///   dan ClosePhone(), bukan lewat polling Update() di PhoneVisibilityHook.
+///   Ini memastikan semua tombol HUD (Phone, TPP, INTERACT, RUN) langsung
+///   hilang pada frame yang sama saat HP dibuka — tidak ada delay 1 frame.
+/// - PhoneVisibilityHook tetap ada sebagai fallback, tapi tidak lagi jadi
+///   satu-satunya mekanisme hide/show.
 /// </summary>
 public class PhoneManager : MonoBehaviour
 {
@@ -39,10 +47,17 @@ public class PhoneManager : MonoBehaviour
 
     void Update()
     {
-        // Input PC: tekan panah atas
-        if (Input.GetKeyDown(pcOpenKey))
+        // Android Back Button / PC Escape → delegasi ke PhoneNavigator
+        // GoBack() di PhoneNavigator sudah handle:
+        //   - Jika di sub-panel → balik ke Home
+        //   - Jika di Home      → tutup HP (panggil ClosePhone)
+        if (isPhoneOpen && Input.GetKeyDown(KeyCode.Escape))
         {
-            TogglePhone();
+            var nav = FindFirstObjectByType<PhoneNavigator>();
+            if (nav != null)
+                nav.GoBack();
+            else
+                ClosePhone(); // fallback jika PhoneNavigator tidak ada
         }
     }
 
@@ -59,6 +74,10 @@ public class PhoneManager : MonoBehaviour
                 phoneAnimator.SetBool("IsOpen", isPhoneOpen);
         }
 
+        // ── FIX: Langsung hide/show semua tombol HUD di frame yang sama ──
+        // Tidak menunggu PhoneVisibilityHook polling di Update() berikutnya.
+        ApplyHUDVisibility(isPhoneOpen);
+
         // Mainkan suara
         if (audioSource != null)
         {
@@ -74,6 +93,24 @@ public class PhoneManager : MonoBehaviour
     {
         if (isPhoneOpen)
             TogglePhone();
+    }
+
+    /// <summary>
+    /// Hide semua tombol HUD saat HP buka, show kembali saat HP tutup.
+    /// Dipanggil langsung dari TogglePhone() supaya sinkron di frame yang sama.
+    /// </summary>
+    void ApplyHUDVisibility(bool phoneIsOpen)
+    {
+        if (FloatingJoystick.Instance == null)
+        {
+            Debug.LogWarning("[PhoneManager] FloatingJoystick.Instance null — tombol HUD tidak bisa di-hide.");
+            return;
+        }
+
+        if (phoneIsOpen)
+            FloatingJoystick.Instance.HideMobileUI();
+        else
+            FloatingJoystick.Instance.ShowMobileUI();
     }
 
     public bool IsPhoneOpen => isPhoneOpen;
