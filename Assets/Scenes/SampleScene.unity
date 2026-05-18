@@ -13171,26 +13171,32 @@ MonoBehaviour:
   - songName: Color Your Night
     artistName: Lotus Juice, ATLUS
     audioClip: {fileID: 8300000, guid: da9f694c3cfe95741bf908c9c49c1e79, type: 3}
+    lrcFile: {fileID: 4900000, guid: 08b220bbca163c24d8c75ecd953ac915, type: 3}
     description: 
   - songName: Iwatodai Dorm
     artistName: Lotus Juice, ATLUS
     audioClip: {fileID: 8300000, guid: ff318bfffba969f43ab6b9f369facf06, type: 3}
+    lrcFile: {fileID: 0}
+    description: 
+  - songName: Changing Seasons
+    artistName: Azumi Takahashi, ATLUS
+    audioClip: {fileID: 8300000, guid: 5a4eb77718451c3458e353795ece5e0c, type: 3}
+    lrcFile: {fileID: 0}
     description: 
   - songName: Want To Be Close
     artistName: Azumi Takahashi, ATLUS
     audioClip: {fileID: 8300000, guid: e6eaff87e939d874d8044f136c238ef4, type: 3}
+    lrcFile: {fileID: 0}
     description: 
   - songName: When The Moon's Reaching Out Stars
     artistName: Azumi Takahashi, ATLUS
     audioClip: {fileID: 8300000, guid: 49c0dbb671964994cad8a393ec1b8414, type: 3}
+    lrcFile: {fileID: 0}
     description: 
   - songName: It's Going Down Now
     artistName: Azumi Takahashi, ATLUS
     audioClip: {fileID: 8300000, guid: b61556c738ae9aa4ca05f4d3245ce2b5, type: 3}
-    description: 
-  - songName: It's Going Down Now
-    artistName: Azumi Takahashi, ATLUS
-    audioClip: {fileID: 8300000, guid: b61556c738ae9aa4ca05f4d3245ce2b5, type: 3}
+    lrcFile: {fileID: 0}
     description: 
 --- !u!4 &744182045
 Transform:

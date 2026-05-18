@@ -69,7 +69,21 @@ public class PhoneUIBuilder : MonoBehaviour
         // Mulai update jam
         StartCoroutine(UpdateClock());
 
+        // FIX: LoadSong dipanggil 1 frame setelah Start() semua script selesai
+        // supaya MusicPlayerPhone.Start() sudah jalan dan _lrcFont sudah ter-init
+        StartCoroutine(DelayedLoadSong());
+
         Debug.Log("[PhoneUIBuilder] Selesai! HP UI sudah dibuat.");
+    }
+
+    IEnumerator DelayedLoadSong()
+    {
+        yield return null; // tunggu 1 frame
+        if (_musicPlayer != null && _musicPlayer.playlist.Count > 0)
+        {
+            Debug.Log("[PhoneUIBuilder] DelayedLoadSong: memuat lagu pertama...");
+            _musicPlayer.LoadSong(0, autoPlay: _musicPlayer.autoPlayOnOpen);
+        }
     }
 
     // ═════════════════════════════════════════════════════════════
@@ -132,7 +146,7 @@ public class PhoneUIBuilder : MonoBehaviour
         var txt       = labelGO.AddComponent<Text>();
         txt.text      = "PHONE";
         txt.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        txt.fontSize  = 13;
+        txt.fontSize  = 18;
         txt.fontStyle = FontStyle.Bold;
         txt.color     = Color.white;
         txt.alignment = TextAnchor.MiddleCenter;
@@ -155,8 +169,8 @@ public class PhoneUIBuilder : MonoBehaviour
         rt.anchorMin        = new Vector2(1f, 0f);
         rt.anchorMax        = new Vector2(1f, 0f);
         rt.pivot            = new Vector2(1f, 0f);
-        rt.anchoredPosition = new Vector2(-120f, 80f);
-        rt.sizeDelta        = new Vector2(260f, 460f);
+        rt.anchoredPosition = new Vector2(-160f, 80f);  // turun dari 160 ke 80
+        rt.sizeDelta        = new Vector2(480f, 780f);  // lebih besar dari 360x600
 
         // Bodi HP (hitam dengan border abu-abu)
         var body = new GameObject("PhoneBody");
@@ -205,7 +219,7 @@ public class PhoneUIBuilder : MonoBehaviour
         rt.anchorMax = new Vector2(1f, 1f);
         rt.pivot     = new Vector2(0.5f, 1f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(0f, 28f);
+        rt.sizeDelta = new Vector2(0f, 36f);
 
         var bg = bar.AddComponent<Image>();
         bg.color = C_BG_HEADER;
@@ -248,7 +262,7 @@ public class PhoneUIBuilder : MonoBehaviour
         crt.sizeDelta = new Vector2(100f, 0f);
         _clockText = clockGO.AddComponent<Text>();
         _clockText.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        _clockText.fontSize  = 11;
+        _clockText.fontSize  = 18;
         _clockText.color     = C_GRAY;
         _clockText.alignment = TextAnchor.MiddleCenter;
         _clockText.text      = System.DateTime.Now.ToString("ddd HH:mm").ToUpper();
@@ -278,7 +292,7 @@ public class PhoneUIBuilder : MonoBehaviour
         iconRT.sizeDelta = new Vector2(12f, 0f);
         var iconTxt      = iconGO.AddComponent<Text>();
         iconTxt.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        iconTxt.fontSize  = 13;
+        iconTxt.fontSize  = 18;
         iconTxt.color     = C_GREEN;
         iconTxt.alignment = TextAnchor.MiddleCenter;
         iconTxt.text      = "▮"; // ▮
@@ -290,7 +304,7 @@ public class PhoneUIBuilder : MonoBehaviour
         pctRT.sizeDelta  = new Vector2(30f, 0f);
         var pctTxt       = pctGO.AddComponent<Text>();
         pctTxt.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        pctTxt.fontSize  = 10;
+        pctTxt.fontSize  = 18;
         pctTxt.color     = C_GREEN;
         pctTxt.alignment = TextAnchor.MiddleLeft;
 
@@ -326,13 +340,14 @@ public class PhoneUIBuilder : MonoBehaviour
         var panel = new GameObject("HomePanel");
         panel.transform.SetParent(parent, false);
         var rt = panel.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0f, 0.07f);
-        rt.anchorMax = new Vector2(1f, 0.92f);
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        rt.anchorMin = new Vector2(0f, 0f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.offsetMin = new Vector2(0f,  50f);  // 50px dari bawah = tinggi NavBar
+        rt.offsetMax = new Vector2(0f, -36f);  // 36px dari atas  = tinggi StatusBar
         panel.AddComponent<Image>().color = C_BG_PANEL;
 
         // Header judul
-        var header = MakeText(panel.transform, "PHONE", 18, C_WHITE, TextAnchor.UpperLeft, FontStyle.Bold);
+        var header = MakeText(panel.transform, "PHONE", 28, C_WHITE, TextAnchor.UpperLeft, FontStyle.Bold);
         var hrt    = header.GetComponent<RectTransform>();
         hrt.anchorMin = new Vector2(0f, 1f);
         hrt.anchorMax = new Vector2(1f, 1f);
@@ -379,7 +394,7 @@ public class PhoneUIBuilder : MonoBehaviour
         border.AddComponent<Image>().color = selected ? C_GREEN : new Color(0,0,0,0);
 
         // Label text
-        var txtGO = MakeText(item.transform, label, 16,
+        var txtGO = MakeText(item.transform, label, 26,
             selected ? C_GREEN : C_WHITE,
             TextAnchor.MiddleLeft,
             selected ? FontStyle.Bold : FontStyle.Normal);
@@ -401,6 +416,14 @@ public class PhoneUIBuilder : MonoBehaviour
             btn.onClick.AddListener(() => {
                 if (_phoneNavigator != null)
                     _phoneNavigator.OpenPanel(_musicPanel);
+                if (_musicPlayer != null)
+                {
+                    _musicPlayer.RefreshLyricsIfNeeded();
+                    // Force rebuild layout setelah panel aktif
+                    var lc = _musicPlayer.lyricsContent as RectTransform;
+                    if (lc != null)
+                        LayoutRebuilder.ForceRebuildLayoutImmediate(lc);
+                }
             });
         }
     }
@@ -415,8 +438,10 @@ public class PhoneUIBuilder : MonoBehaviour
         bar.transform.SetParent(parent, false);
         var rt = bar.AddComponent<RectTransform>();
         rt.anchorMin = new Vector2(0f, 0f);
-        rt.anchorMax = new Vector2(1f, 0.07f);
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        rt.anchorMax = new Vector2(1f, 0f);
+        rt.pivot     = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(0f, 50f);   // 50px fixed height dari bawah
         bar.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.04f, 1f);
 
         // Separator garis atas
@@ -451,7 +476,7 @@ public class PhoneUIBuilder : MonoBehaviour
         rt.anchorMin = anchorPos; rt.anchorMax = anchorPos;
         rt.pivot     = new Vector2(0.5f, 0.5f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(60f, 28f);  // lebih lebar agar teks muat
+        rt.sizeDelta = new Vector2(80f, 34f);  // lebih lebar agar teks muat
 
         var bg  = go.AddComponent<Image>();
         bg.color = new Color(0.15f, 0.15f, 0.15f, 0.8f);
@@ -463,7 +488,7 @@ public class PhoneUIBuilder : MonoBehaviour
         cb.pressedColor     = new Color(0.05f, 0.05f, 0.05f, 1f);
         btn.colors = cb;
 
-        var txtGO = MakeText(go.transform, icon, 11, C_WHITE, TextAnchor.MiddleCenter, FontStyle.Bold);
+        var txtGO = MakeText(go.transform, icon, 18, C_WHITE, TextAnchor.MiddleCenter, FontStyle.Bold);
         FillRect(txtGO.GetComponent<RectTransform>());
         return go;
     }
@@ -476,49 +501,56 @@ public class PhoneUIBuilder : MonoBehaviour
         var panel = new GameObject("MusicPanel");
         panel.transform.SetParent(parent, false);
         var rt = panel.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0f, 0.07f);
-        rt.anchorMax = new Vector2(1f, 0.92f);
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        rt.anchorMin = new Vector2(0f, 0f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.offsetMin = new Vector2(0f,  50f);  // 50px dari bawah = NavBar
+        rt.offsetMax = new Vector2(0f, -36f);  // 36px dari atas  = StatusBar
         panel.AddComponent<Image>().color = C_BG_PANEL;
 
-        // Header bar hijau
+        // Header bar hijau — 50px dari atas panel
         var header = new GameObject("Header");
         header.transform.SetParent(panel.transform, false);
         var hrt = header.AddComponent<RectTransform>();
-        hrt.anchorMin = new Vector2(0f, 0.91f); hrt.anchorMax = new Vector2(1f, 1f);
-        hrt.offsetMin = hrt.offsetMax = Vector2.zero;
+        hrt.anchorMin = new Vector2(0f, 1f); hrt.anchorMax = new Vector2(1f, 1f);
+        hrt.pivot     = new Vector2(0.5f, 1f);
+        hrt.anchoredPosition = Vector2.zero;
+        hrt.sizeDelta = new Vector2(0f, 50f);
         header.AddComponent<Image>().color = C_BG_HEADER;
 
-        var htxt = MakeText(header.transform, "MUSIC PLAYER", 15, C_GREEN, TextAnchor.MiddleLeft, FontStyle.Bold);
+        var htxt = MakeText(header.transform, "MUSIC PLAYER", 25, C_GREEN, TextAnchor.MiddleLeft, FontStyle.Bold);
         var htrt = htxt.GetComponent<RectTransform>();
         FillRect(htrt); htrt.offsetMin = new Vector2(12f, 0f);
 
-        // Album art area
+        // Album art area — di bawah header, isi ruang tengah
         var art = new GameObject("AlbumArt");
         art.transform.SetParent(panel.transform, false);
         var artrt = art.AddComponent<RectTransform>();
-        artrt.anchorMin = new Vector2(0f, 0.57f); artrt.anchorMax = new Vector2(1f, 0.91f);
-        artrt.offsetMin = artrt.offsetMax = Vector2.zero;
+        artrt.anchorMin = new Vector2(0f, 0f); artrt.anchorMax = new Vector2(1f, 1f);
+        artrt.offsetMin = new Vector2(0f, 330f);  // dari bawah: atas LyricsArea(120)+Controls(90)+Progress(55)+SongInfo(65)
+        artrt.offsetMax = new Vector2(0f, -50f);  // dari atas: di bawah header
         art.AddComponent<Image>().color = C_BG_ART;
 
         // Animasi equalizer kecil di bawah art
         BuildVisualizer(art.transform);
 
-        // Song info
+        // Song info — 65px, tepat di atas ProgressArea
         var infoGO = new GameObject("SongInfo");
         infoGO.transform.SetParent(panel.transform, false);
         var irt = infoGO.AddComponent<RectTransform>();
-        irt.anchorMin = new Vector2(0f, 0.47f); irt.anchorMax = new Vector2(1f, 0.57f);
-        irt.offsetMin = new Vector2(12f, 0f); irt.offsetMax = new Vector2(-12f, 0f);
+        irt.anchorMin = new Vector2(0f, 0f); irt.anchorMax = new Vector2(1f, 0f);
+        irt.pivot     = new Vector2(0.5f, 0f);
+        irt.anchoredPosition = new Vector2(0f, 265f); // di atas Progress(210+55=265)
+        irt.sizeDelta = new Vector2(-24f, 65f);
+        irt.offsetMin = new Vector2(12f, 265f); irt.offsetMax = new Vector2(-12f, 330f);
 
-        var titleTmp = MakeTMP(infoGO.transform, "Pilih Lagu", 17, C_WHITE, TextAlignmentOptions.Left);
+        var titleTmp = MakeTMP(infoGO.transform, "Pilih Lagu", 27, C_WHITE, TextAlignmentOptions.Left);
         var trt = titleTmp.GetComponent<RectTransform>();
         trt.anchorMin = new Vector2(0f, 0.5f); trt.anchorMax = Vector2.one;
         FillOffset(trt);
         titleTmp.fontStyle = FontStyles.Bold;
         titleTmp.name = "SongTitleText";
 
-        var artistTmp = MakeTMP(infoGO.transform, "Unknown Artist", 13, C_GRAY, TextAlignmentOptions.Left);
+        var artistTmp = MakeTMP(infoGO.transform, "Unknown Artist", 22, C_GRAY, TextAlignmentOptions.Left);
         var art2 = artistTmp.GetComponent<RectTransform>();
         art2.anchorMin = Vector2.zero; art2.anchorMax = new Vector2(1f, 0.5f);
         FillOffset(art2);
@@ -531,7 +563,7 @@ public class PhoneUIBuilder : MonoBehaviour
         BuildMusicControls(panel.transform);
 
         // Playlist scroll
-        BuildPlaylistArea(panel.transform);
+        BuildLyricsArea(panel.transform);
 
         return panel;
     }
@@ -565,8 +597,11 @@ public class PhoneUIBuilder : MonoBehaviour
         var area = new GameObject("ProgressArea");
         area.transform.SetParent(parent, false);
         var rt = area.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0f, 0.38f); rt.anchorMax = new Vector2(1f, 0.47f);
-        rt.offsetMin = new Vector2(14f, 0f); rt.offsetMax = new Vector2(-14f, 0f);
+        rt.anchorMin = new Vector2(0f, 0f);
+        rt.anchorMax = new Vector2(1f, 0f);
+        rt.pivot     = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = new Vector2(0f, 210f); // di atas Controls (120+90=210)
+        rt.sizeDelta = new Vector2(-28f, 55f);        // tinggi progress+time row
 
         // Slider
         var sliderGO = new GameObject("ProgressSlider");
@@ -628,13 +663,13 @@ public class PhoneUIBuilder : MonoBehaviour
         trt.anchorMin = new Vector2(0f, 0f); trt.anchorMax = new Vector2(1f, 0.45f);
         trt.offsetMin = trt.offsetMax = Vector2.zero;
 
-        var curTMP = MakeTMP(timeRow.transform, "0:00", 10, C_GRAY, TextAlignmentOptions.Left);
+        var curTMP = MakeTMP(timeRow.transform, "0:00", 18, C_GRAY, TextAlignmentOptions.Left);
         var ctrt   = curTMP.GetComponent<RectTransform>();
         ctrt.anchorMin = Vector2.zero; ctrt.anchorMax = new Vector2(0.5f, 1f);
         FillOffset(ctrt);
         curTMP.name = "CurrentTimeText";
 
-        var totTMP = MakeTMP(timeRow.transform, "0:00", 10, C_GRAY, TextAlignmentOptions.Right);
+        var totTMP = MakeTMP(timeRow.transform, "0:00", 18, C_GRAY, TextAlignmentOptions.Right);
         var ttrt   = totTMP.GetComponent<RectTransform>();
         ttrt.anchorMin = new Vector2(0.5f, 0f); ttrt.anchorMax = Vector2.one;
         FillOffset(ttrt);
@@ -646,61 +681,89 @@ public class PhoneUIBuilder : MonoBehaviour
         var ctrl = new GameObject("Controls");
         ctrl.transform.SetParent(parent, false);
         var rt = ctrl.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0f, 0.22f); rt.anchorMax = new Vector2(1f, 0.38f);
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        // Tempatkan tepat di atas LyricsArea (120px dari bawah) + tinggi controls ~95px
+        rt.anchorMin = new Vector2(0f, 0f);
+        rt.anchorMax = new Vector2(1f, 0f);
+        rt.pivot     = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = new Vector2(0f, 120f); // mulai dari atas LyricsArea
+        rt.sizeDelta = new Vector2(0f, 90f);         // tinggi area controls
 
         // Shuffle (kiri luar)
-        var shuffleBtn = MakeCircleButton(ctrl.transform, "⇄", new Vector2(0.08f, 0.5f), 30f, C_GRAY_DARK, C_GRAY);
+        var shuffleBtn = MakeCircleButton(ctrl.transform, "⇄", new Vector2(0.08f, 0.5f), 38f, C_GRAY_DARK, C_GRAY);
         shuffleBtn.name = "ShuffleButton";
 
         // Prev
-        var prevBtn = MakeCircleButton(ctrl.transform, "◀◀", new Vector2(0.30f, 0.5f), 38f, C_GRAY_DARK, C_WHITE);
+        var prevBtn = MakeCircleButton(ctrl.transform, "◀◀", new Vector2(0.30f, 0.5f), 48f, C_GRAY_DARK, C_WHITE);
         prevBtn.name = "PrevButton";
 
         // Play/Pause (tengah, lebih besar, hijau)
-        var ppBtn = MakeCircleButton(ctrl.transform, "▶", new Vector2(0.5f, 0.5f), 50f, C_GREEN, C_BG_DARK);
+        var ppBtn = MakeCircleButton(ctrl.transform, "▶", new Vector2(0.5f, 0.5f), 66f, C_GREEN, C_BG_DARK);
         ppBtn.name = "PlayPauseButton";
 
         // Untuk track icon play/pause nanti
         ppBtn.GetComponentInChildren<Text>().name = "PlayPauseIcon_Text";
 
         // Next
-        var nextBtn = MakeCircleButton(ctrl.transform, "▶▶", new Vector2(0.70f, 0.5f), 38f, C_GRAY_DARK, C_WHITE);
+        var nextBtn = MakeCircleButton(ctrl.transform, "▶▶", new Vector2(0.70f, 0.5f), 48f, C_GRAY_DARK, C_WHITE);
         nextBtn.name = "NextButton";
 
         // Repeat (kanan luar)
-        var repBtn = MakeCircleButton(ctrl.transform, "↺", new Vector2(0.92f, 0.5f), 30f, C_GRAY_DARK, C_GRAY);
+        var repBtn = MakeCircleButton(ctrl.transform, "↺", new Vector2(0.92f, 0.5f), 38f, C_GRAY_DARK, C_GRAY);
         repBtn.name = "RepeatButton";
     }
 
-    void BuildPlaylistArea(Transform parent)
+    void BuildLyricsArea(Transform parent)
     {
-        var area = new GameObject("PlaylistArea");
+        var area = new GameObject("LyricsArea");
         area.transform.SetParent(parent, false);
         var rt = area.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0f, 0f); rt.anchorMax = new Vector2(1f, 0.22f);
-        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        // Pakai pixel sizing: 120px fixed dari bawah panel, tepat di bawah Controls (0.18)
+        rt.anchorMin = new Vector2(0f, 0f);
+        rt.anchorMax = new Vector2(1f, 0f);
+        rt.pivot     = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(0f, 120f); // 120px tinggi area lirik
         area.AddComponent<Image>().color = new Color(0.06f, 0.06f, 0.06f, 1f);
 
-        // Separator
+        // Separator atas
         var sep = new GameObject("Sep");
         sep.transform.SetParent(area.transform, false);
         var srt = sep.AddComponent<RectTransform>();
         srt.anchorMin = new Vector2(0f, 1f); srt.anchorMax = new Vector2(1f, 1f);
-        srt.pivot = new Vector2(0f,1f); srt.anchoredPosition = Vector2.zero; srt.sizeDelta = new Vector2(0f,1f);
+        srt.pivot = new Vector2(0f, 1f); srt.anchoredPosition = Vector2.zero; srt.sizeDelta = new Vector2(0f, 1f);
         sep.AddComponent<Image>().color = C_SEPARATOR;
 
-        // Scroll view
-        var scrollGO = new GameObject("ScrollView");
+        // Label "LYRICS"
+        var labelGO = new GameObject("LyricsLabel");
+        labelGO.transform.SetParent(area.transform, false);
+        var lrt = labelGO.AddComponent<RectTransform>();
+        lrt.anchorMin = new Vector2(0f, 1f); lrt.anchorMax = new Vector2(1f, 1f);
+        lrt.pivot = new Vector2(0f, 1f);
+        lrt.anchoredPosition = new Vector2(10f, -2f);
+        lrt.sizeDelta = new Vector2(0f, 16f);
+        var lbl = labelGO.AddComponent<Text>();
+        lbl.text      = "LYRICS";
+        lbl.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        lbl.fontSize  = 15;
+        lbl.fontStyle = FontStyle.Bold;
+        lbl.color     = C_GREEN;
+        lbl.alignment = TextAnchor.MiddleLeft;
+        lbl.raycastTarget = false;
+
+        // ScrollView
+        var scrollGO = new GameObject("LyricsScrollView");
         scrollGO.transform.SetParent(area.transform, false);
         var svrt = scrollGO.AddComponent<RectTransform>();
-        FillRect(svrt);
+        svrt.anchorMin = new Vector2(0f, 0f); svrt.anchorMax = new Vector2(1f, 1f);
+        svrt.offsetMin = new Vector2(0f, 0f); svrt.offsetMax = new Vector2(0f, -18f);
         scrollGO.AddComponent<Image>().color = Color.clear;
         var scroll = scrollGO.AddComponent<ScrollRect>();
         scroll.horizontal = false;
+        scroll.inertia    = true;
+        scroll.scrollSensitivity = 15f;
 
         // Viewport
-        var viewport = new GameObject("Viewport");
+        var viewport = new GameObject("LyricsViewport");
         viewport.transform.SetParent(scrollGO.transform, false);
         var vprt = viewport.AddComponent<RectTransform>();
         FillRect(vprt);
@@ -708,7 +771,7 @@ public class PhoneUIBuilder : MonoBehaviour
         viewport.AddComponent<Mask>().showMaskGraphic = false;
 
         // Content
-        var content = new GameObject("Content");
+        var content = new GameObject("LyricsContent");
         content.transform.SetParent(viewport.transform, false);
         var crt = content.AddComponent<RectTransform>();
         crt.anchorMin = new Vector2(0f, 1f); crt.anchorMax = new Vector2(1f, 1f);
@@ -717,20 +780,22 @@ public class PhoneUIBuilder : MonoBehaviour
         crt.sizeDelta = Vector2.zero;
 
         var vlg = content.AddComponent<VerticalLayoutGroup>();
-        vlg.childControlHeight  = true;
-        vlg.childControlWidth   = true;
+        vlg.childControlHeight     = true;   // true agar ContentSizeFitter bisa hitung total height
+        vlg.childControlWidth      = true;
         vlg.childForceExpandWidth  = true;
         vlg.childForceExpandHeight = false;
-        vlg.spacing = 0f;
+        vlg.spacing = 4f;
+        vlg.padding = new RectOffset(10, 10, 4, 4);
 
         var csf = content.AddComponent<ContentSizeFitter>();
-        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        csf.verticalFit   = ContentSizeFitter.FitMode.PreferredSize;
+        csf.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
 
-        scroll.viewport     = vprt;
-        scroll.content      = crt;
-        scroll.scrollSensitivity = 20f;
+        scroll.viewport = vprt;
+        scroll.content  = crt;
 
-        content.name = "PlaylistContent";
+        content.name = "LyricsContent";
+        area.name    = "LyricsArea";
     }
 
     // ═════════════════════════════════════════════════════════════
@@ -796,29 +861,36 @@ public class PhoneUIBuilder : MonoBehaviour
         _musicPlayer.prevButton       = FindInChildren<Button>(_musicPanel, "PrevButton");
         _musicPlayer.shuffleButton    = FindInChildren<Button>(_musicPanel, "ShuffleButton");
 
-        var playlistContent = FindInChildren<Transform>(_musicPanel, "PlaylistContent");
-        if (playlistContent != null)
-            _musicPlayer.playlistContentParent = playlistContent;
+        // Wire LyricsViewer
+        var lyricsContent = FindChildTransform(_musicPanel, "LyricsContent");
+        var lyricsScroll  = FindInChildren<ScrollRect>(_musicPanel, "LyricsScrollView");
+        if (lyricsContent != null)
+            _musicPlayer.lyricsContent = lyricsContent;
+        else
+            Debug.LogWarning("[PhoneUIBuilder] LyricsContent tidak ditemukan!");
+        if (lyricsScroll != null)
+            _musicPlayer.lyricsScrollRect = lyricsScroll;
+        else
+            Debug.LogWarning("[PhoneUIBuilder] LyricsScrollView tidak ditemukan!");
 
-        // FIX: Assign songs SEBELUM Start() — supaya BuildPlaylistUI() punya data.
-        // Setelah assign, panggil RebuildPlaylist() manual karena Start() sudah lewat.
+        // Assign songs
         if (songs != null && songs.Length > 0)
         {
             _musicPlayer.playlist.Clear();
             foreach (var s in songs)
                 _musicPlayer.playlist.Add(s);
-            // Rebuild playlist UI sekarang karena Start() sudah dipanggil lebih awal
-            _musicPlayer.RebuildPlaylist();
         }
 
-        // Wire Visualizer — dilakukan SETELAH _musicPlayer ada
-        // FIX: sebelumnya viz di-assign sebelum _musicPlayer, jadi visualizer field null
+        // Wire Visualizer
         var viz = _musicPanel.GetComponentInChildren<VisualizerAnimator>(true);
         if (viz != null)
         {
             _musicPlayer.visualizer = viz;
-            viz.isPlaying = false; // pastikan diam di awal
+            viz.isPlaying = false;
         }
+
+        // LoadSong dipanggil dari DelayedLoadSong() di Start() — 1 frame setelah ini
+        // supaya MusicPlayerPhone.Start() sudah selesai (_lrcFont ter-init)
 
         // Attach hook untuk hide/show tombol saat HP buka/tutup
         gameObject.AddComponent<PhoneVisibilityHook>();
@@ -940,7 +1012,15 @@ public class PhoneUIBuilder : MonoBehaviour
     T FindInChildren<T>(GameObject root, string name) where T : Component
     {
         foreach (var t in root.GetComponentsInChildren<T>(true))
-            if (t.name == name) return t;
+            if (t.gameObject.name == name) return t;
+        return null;
+    }
+
+    // Cari Transform child by GameObject name (untuk LyricsContent, PlaylistContent, dll)
+    Transform FindChildTransform(GameObject root, string name)
+    {
+        foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+            if (t.gameObject.name == name) return t;
         return null;
     }
 }
