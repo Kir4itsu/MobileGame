@@ -1,14 +1,24 @@
 {
   "stations": [
     {
-      "name": "Prambors FM Jakarta",
-      "url": "https://22283.live.streamtheworld.com:443/PRAMBORS_FM.mp3",
-      "genre": "Pop / Hits"
+      "name": "Hard Rock FM Jakarta",
+      "url": "https://n10.radiojar.com/7csmg90fuqruv",
+      "genre": "Rock"
     },
     {
-      "name": "I-Radio Jakarta",
-      "url": "https://n03.radiojar.com/4ywdgup3bnzuv",
-      "genre": "Indonesia"
+      "name": "Capital FM",
+      "url": "https://media-ice.musicradio.com/CapitalMP3",
+      "genre": "Pop"
+    },
+    {
+      "name": "Kiss FM",
+      "url": "https://radioindia.net/radio/kissfmindia/icecast.audio",
+      "genre": "Hits"
+    },
+    {
+      "name": "Radio Mast Test",
+      "url": "https://stream.radiomast.io/ref-128mp3",
+      "genre": "Test"
     }
   ]
 }

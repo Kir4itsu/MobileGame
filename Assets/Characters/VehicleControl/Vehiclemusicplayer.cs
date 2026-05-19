@@ -101,11 +101,11 @@ public class VehicleMusicPlayer : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.M) && _uiPanel != null && _uiPanel.activeSelf)
             TogglePlayPause();
 
-        // Shortcut keyboard: N = next stasiun, B = prev stasiun
-        if (Input.GetKeyDown(KeyCode.N) && _uiPanel != null && _uiPanel.activeSelf)
-            PlayNext();
-        if (Input.GetKeyDown(KeyCode.B) && _uiPanel != null && _uiPanel.activeSelf)
+        // Shortcut keyboard: , = prev stasiun, . = next stasiun
+        if (Input.GetKeyDown(KeyCode.Comma) && _uiPanel != null && _uiPanel.activeSelf)
             PlayPrev();
+        if (Input.GetKeyDown(KeyCode.Period) && _uiPanel != null && _uiPanel.activeSelf)
+            PlayNext();
 
         // Deteksi stream putus (misal koneksi internet terputus)
         if (_isPlaying && !_isLoading && _audioSource != null && !_audioSource.isPlaying)
@@ -252,6 +252,15 @@ public class VehicleMusicPlayer : MonoBehaviour
             // streamAudio = true supaya mulai play sebelum full download
             ((DownloadHandlerAudioClip)req.downloadHandler).streamAudio = true;
             req.timeout = 15;
+
+            // Beberapa server streaming (streamtheworld, radiojar, dll) blokir
+            // User-Agent default Unity → kasih User-Agent browser supaya tidak 403
+            req.SetRequestHeader("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/124.0.0.0 Safari/537.36");
+            req.SetRequestHeader("Accept", "*/*");
+            req.SetRequestHeader("Icy-MetaData", "1");
 
             var op = req.SendWebRequest();
 
