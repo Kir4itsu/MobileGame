@@ -97,6 +97,16 @@ public class VehicleMusicPlayer : MonoBehaviour
 
     void Update()
     {
+        // Shortcut keyboard: M = play/pause radio (hanya saat UI aktif / di dalam mobil)
+        if (Input.GetKeyDown(KeyCode.M) && _uiPanel != null && _uiPanel.activeSelf)
+            TogglePlayPause();
+
+        // Shortcut keyboard: N = next stasiun, B = prev stasiun
+        if (Input.GetKeyDown(KeyCode.N) && _uiPanel != null && _uiPanel.activeSelf)
+            PlayNext();
+        if (Input.GetKeyDown(KeyCode.B) && _uiPanel != null && _uiPanel.activeSelf)
+            PlayPrev();
+
         // Deteksi stream putus (misal koneksi internet terputus)
         if (_isPlaying && !_isLoading && _audioSource != null && !_audioSource.isPlaying)
         {
