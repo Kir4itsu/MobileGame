@@ -1,0 +1,34 @@
+{
+  "stations": [
+    {
+      "name": "RRI Pro 1 Jakarta",
+      "url": "http://streaming.rri.go.id/pro1-jkt/mp3/256",
+      "genre": "Berita"
+    },
+    {
+      "name": "RRI Pro 2 Jakarta",
+      "url": "http://streaming.rri.go.id/pro2-jkt/mp3/256",
+      "genre": "Hiburan"
+    },
+    {
+      "name": "RRI Pro 3 Jakarta",
+      "url": "http://streaming.rri.go.id/pro3-jkt/mp3/256",
+      "genre": "Pemuda"
+    },
+    {
+      "name": "RRI Pro 4 Jakarta",
+      "url": "http://streaming.rri.go.id/pro4-jkt/mp3/256",
+      "genre": "Budaya"
+    },
+    {
+      "name": "Prambors Jakarta",
+      "url": "https://stream.prambors.com/prambors.mp3",
+      "genre": "Pop"
+    },
+    {
+      "name": "Hard Rock FM Jakarta",
+      "url": "https://stream.hardrock.fm/hardrock.mp3",
+      "genre": "Rock"
+    }
+  ]
+}
