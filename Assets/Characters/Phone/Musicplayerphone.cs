@@ -81,6 +81,10 @@ public class MusicPlayerPhone : MonoBehaviour
 
         SetupButtons();
 
+        // Terapkan volume musik tersimpan dari PlayerPrefs
+        if (musicAudioSource != null)
+            musicAudioSource.volume = PlayerPrefs.GetFloat("audio_vol_music", 0.50f);
+
         // CATATAN: LoadSong(0) tidak dipanggil di sini.
         // PhoneUIBuilder.WireScripts() akan memanggil LoadSong(0) setelah
         // lyricsContent & lyricsScrollRect selesai di-assign,
@@ -482,6 +486,15 @@ public class MusicPlayerPhone : MonoBehaviour
     {
         musicAudioSource.Stop();
         ApplyPlayingState(false);
+    }
+
+    /// <summary>
+    /// Dipanggil oleh SettingsMenu saat slider Volume Musik digeser.
+    /// </summary>
+    public void SetMusicVolume(float v)
+    {
+        if (musicAudioSource != null)
+            musicAudioSource.volume = v;
     }
 
     public bool     IsPlaying   => isPlaying;

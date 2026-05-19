@@ -1,16 +1,17 @@
 using UnityEngine;
 
 /// <summary>
-/// MapCameraRenderer
-/// Attach ke GameObject baru (misal "MapCamera") di scene.
-/// Script ini membuat Camera overhead yang hanya nge-render
-/// GameObject ber-tag "Map" ke sebuah RenderTexture.
+/// MapCameraRenderer — berdasarkan script asli, fix: CloudOverlay/Rain tidak ikut ke-render
 ///
-/// SETUP DI UNITY:
-/// 1. Buat Layer baru bernama "MapLayer" (Edit > Project Settings > Tags and Layers)
-/// 2. Tandai semua objek peta kamu (tag "Map") ke layer "MapLayer"
-/// 3. Attach script ini ke GameObject kosong "MapCamera"
-/// 4. Pastikan SettingsMenu.cs sudah diupdate (pakai BuildMapContent versi baru)
+/// PERUBAHAN DARI VERSI ASLI:
+/// - Timing auto-fit SAMA seperti asli (0.5 detik) → map langsung center dari awal
+/// - Tambah excludeLayerNames: CloudOverlay/Rain yang di TransparentFX tidak ikut render
+/// - Culling mask lebih ketat: hanya MapLayer, exclude weather layer
+///
+/// SETUP:
+/// 1. Layer "MapLayer" → assign ke semua objek MAP
+/// 2. CloudOverlay, Rain Particle, SplashParticle → set Layer ke "TransparentFX"
+/// 3. Field "Exclude Layer Names" di Inspector → isi: TransparentFX, UI
 /// </summary>
 public class MapCameraRenderer : MonoBehaviour
 {
@@ -23,11 +24,17 @@ public class MapCameraRenderer : MonoBehaviour
 
     [Header("Camera Settings")]
     [Tooltip("Tinggi kamera dari atas (orthographic size)")]
-    public float cameraHeight    = 200f;
+    public float cameraHeight     = 200f;
     public float orthographicSize = 150f;
 
     [Tooltip("Nama Layer yang dirender kamera peta (harus sama dengan layer objek peta)")]
     public string mapLayerName = "MapLayer";
+
+    [Header("Exclude dari Map (Weather, dll)")]
+    [Tooltip("Layer-layer ini TIDAK dirender di map.\n" +
+             "Isi dengan layer CloudOverlay/Rain/SplashParticle kamu.\n" +
+             "Default: TransparentFX, UI")]
+    public string[] excludeLayerNames = new string[] { "TransparentFX", "UI" };
 
     // RenderTexture yang bisa diambil SettingsMenu
     public RenderTexture MapRenderTexture { get; private set; }
@@ -48,13 +55,12 @@ public class MapCameraRenderer : MonoBehaviour
     {
         MapRenderTexture = new RenderTexture(renderWidth, renderHeight, 16, RenderTextureFormat.ARGB32);
         MapRenderTexture.filterMode = FilterMode.Bilinear;
-        MapRenderTexture.antiAliasing = 2;
+        MapRenderTexture.antiAliasing = 1; // URP Mobile tidak support MSAA di RenderTexture
         MapRenderTexture.Create();
     }
 
     void SetupCamera()
     {
-        // Buat GameObject kamera
         GameObject camGO = new GameObject("_MapCameraInternal");
         camGO.transform.SetParent(transform);
         DontDestroyOnLoad(camGO);
@@ -71,39 +77,53 @@ public class MapCameraRenderer : MonoBehaviour
         _mapCamera.nearClipPlane    = 0.1f;
         _mapCamera.farClipPlane     = cameraHeight + 50f;
 
-        // Hanya render layer MapLayer
+        // ── Culling Mask ──────────────────────────────────────────────────────
         int mapLayer = LayerMask.NameToLayer(mapLayerName);
         if (mapLayer < 0)
         {
+            // Layer MapLayer tidak ditemukan → fallback: render semua KECUALI exclude list
             Debug.LogWarning($"[MapCameraRenderer] Layer '{mapLayerName}' tidak ditemukan! " +
-                             "Buat layer baru di Edit > Project Settings > Tags and Layers.");
-            _mapCamera.cullingMask = ~(LayerMask.GetMask("UI"));
+                             "Fallback: render semua kecuali exclude layers. " +
+                             "Buat layer 'MapLayer' di Edit > Project Settings > Tags and Layers.");
+            _mapCamera.cullingMask = ~BuildExcludeMask();
         }
         else
         {
+            // Layer MapLayer ditemukan → HANYA render MapLayer
+            // CloudOverlay/Rain yang bukan MapLayer otomatis tidak muncul
             _mapCamera.cullingMask = 1 << mapLayer;
+            Debug.Log($"[MapCameraRenderer] Culling mask: hanya layer '{mapLayerName}' " +
+                      $"(index {mapLayer}). Weather/particles di layer lain tidak akan muncul.");
         }
 
         // Render ke texture, bukan ke layar
-        _mapCamera.targetTexture = MapRenderTexture;
-
-        // Background gelap
-        _mapCamera.clearFlags       = CameraClearFlags.SolidColor;
-        _mapCamera.backgroundColor  = new Color(0.05f, 0.08f, 0.05f, 1f);
+        _mapCamera.targetTexture   = MapRenderTexture;
+        _mapCamera.clearFlags      = CameraClearFlags.SolidColor;
+        _mapCamera.backgroundColor = new Color(0.05f, 0.08f, 0.05f, 1f);
 
         // Nonaktifkan audio listener agar tidak bentrok
         AudioListener al = camGO.GetComponent<AudioListener>();
         if (al != null) al.enabled = false;
 
-        // Auto-fit kamera ke semua objek di MapLayer saat Start
+        // Timing SAMA seperti script asli → map langsung center dari awal
         StartCoroutine(AutoFitToMapObjects());
     }
 
     /// <summary>
-    /// Auto-fit kamera overhead agar semua objek di MapLayer terlihat penuh,
-    /// ter-center, dan tidak ada area hitam yang tidak perlu.
-    /// Dipanggil otomatis saat Awake; bisa juga dipanggil manual lewat inspector.
+    /// Bangun exclude mask dari excludeLayerNames (untuk fallback mode saja).
     /// </summary>
+    int BuildExcludeMask()
+    {
+        int mask = 0;
+        foreach (string layerName in excludeLayerNames)
+        {
+            int l = LayerMask.NameToLayer(layerName);
+            if (l >= 0)
+                mask |= (1 << l);
+        }
+        return mask;
+    }
+
     [ContextMenu("Auto Fit Camera To Map")]
     public void AutoFitCameraToMap()
     {
@@ -111,7 +131,6 @@ public class MapCameraRenderer : MonoBehaviour
         int mapLayer = LayerMask.NameToLayer(mapLayerName);
         if (mapLayer < 0) return;
 
-        // Kumpulkan semua Renderer di layer MapLayer
         Renderer[] allRenderers = FindObjectsOfType<Renderer>();
         Bounds bounds = new Bounds(Vector3.zero, Vector3.zero);
         bool found = false;
@@ -130,37 +149,30 @@ public class MapCameraRenderer : MonoBehaviour
             return;
         }
 
-        // Posisikan kamera di center XZ dari bounds, tinggi = cameraHeight
         Vector3 center = bounds.center;
         _mapCamera.transform.position = new Vector3(center.x, center.y + cameraHeight, center.z);
 
-        // Hitung orthographic size agar seluruh bounds muat
-        // Aspect ratio RenderTexture = width / height
         float aspect     = (float)renderWidth / renderHeight;
-        float halfWidth  = bounds.extents.x + 5f;  // +5 padding
-        float halfHeight = bounds.extents.z + 5f;  // Z karena kamera top-down
+        float halfWidth  = bounds.extents.x + 5f;
+        float halfHeight = bounds.extents.z + 5f;
 
-        // Pilih ukuran yang cukup untuk cover kedua dimensi
-        float sizeFromHeight = halfHeight;
-        float sizeFromWidth  = halfWidth / aspect;
-        orthographicSize = Mathf.Max(sizeFromHeight, sizeFromWidth);
+        orthographicSize            = Mathf.Max(halfHeight, halfWidth / aspect);
         _mapCamera.orthographicSize = orthographicSize;
         _mapCamera.farClipPlane     = cameraHeight + bounds.extents.y * 2f + 50f;
 
-        Debug.Log($"[MapCameraRenderer] Auto-fit: center={center}, orthoSize={orthographicSize:F1}, bounds={bounds.size}");
+        Debug.Log($"[MapCameraRenderer] Auto-fit OK: center=({center.x:F1},{center.z:F1}), " +
+                  $"orthoSize={orthographicSize:F1}");
     }
 
+    // Timing asli: 2 frame + 0.5 detik → map langsung center dari awal, tidak ada delay loncat
     System.Collections.IEnumerator AutoFitToMapObjects()
     {
-        // Tunggu 1 frame agar semua objek sudah di-spawn/loaded
         yield return null;
+        yield return null;
+        yield return new WaitForSeconds(0.5f);
         AutoFitCameraToMap();
     }
 
-    /// <summary>
-    /// Ikuti posisi target (misal: player) — opsional.
-    /// Panggil dari luar: MapCameraRenderer.Instance.FollowTarget(playerTransform);
-    /// </summary>
     public void FollowTarget(Transform target, bool followX = true, bool followZ = true)
     {
         if (_mapCamera == null || target == null) return;
@@ -170,14 +182,18 @@ public class MapCameraRenderer : MonoBehaviour
         _mapCamera.transform.position = pos;
     }
 
-    /// <summary>
-    /// Ubah ketinggian/zoom kamera (orthographic size).
-    /// Nilai kecil = zoom in, nilai besar = zoom out.
-    /// </summary>
     public void SetOrthoSize(float size)
     {
         if (_mapCamera != null)
             _mapCamera.orthographicSize = Mathf.Clamp(size, 10f, 500f);
+    }
+
+    /// <summary>
+    /// Panggil dari luar (misal setelah Photon spawn) untuk refresh fit.
+    /// </summary>
+    public void RefreshAndFit()
+    {
+        StartCoroutine(AutoFitToMapObjects());
     }
 
     void OnDestroy()

@@ -43,7 +43,7 @@ public class VehicleMusicPlayer : MonoBehaviour
     {
         _audioSource        = gameObject.AddComponent<AudioSource>();
         _audioSource.loop   = false;
-        _audioSource.volume = volume;
+        _audioSource.volume = PlayerPrefs.GetFloat("audio_vol_music", 0.50f); // pakai nilai tersimpan
         _audioSource.playOnAwake = false;
     }
 
@@ -70,7 +70,18 @@ public class VehicleMusicPlayer : MonoBehaviour
     {
         ActivePlayer = this;
         if (_uiPanel != null) _uiPanel.SetActive(true);
+        // Terapkan volume terkini saat UI ditampilkan
+        _audioSource.volume = PlayerPrefs.GetFloat("audio_vol_music", 0.50f);
         Debug.Log("[MusicPlayer] ShowMusicUI dipanggil. Songs: " + (songs != null ? songs.Length : 0));
+    }
+
+    /// <summary>
+    /// Dipanggil oleh SettingsMenu saat slider Volume Musik digeser.
+    /// </summary>
+    public void SetMusicVolume(float v)
+    {
+        if (_audioSource != null)
+            _audioSource.volume = v;
     }
 
     public void HideMusicUI()

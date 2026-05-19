@@ -119,7 +119,24 @@ public class WeatherManager : MonoBehaviour
         if (splashParticle != null) splashParticle.Stop();
         if (cloudOverlay   != null) cloudOverlay.SetActive(false);
 
+        // Terapkan volume SFX tersimpan dari PlayerPrefs
+        float savedSfx = PlayerPrefs.GetFloat("audio_vol_sfx", 0.70f);
+        SetSfxVolume(savedSfx);
+
         ApplyWeatherImmediate(currentWeather);
+    }
+
+    // =============================================
+    // VOLUME SFX (dipanggil dari SettingsMenu)
+    // =============================================
+    /// <summary>
+    /// Atur volume semua audio cuaca: hujan & petir.
+    /// Dipanggil oleh SettingsMenu saat slider Volume Efek digeser.
+    /// </summary>
+    public void SetSfxVolume(float v)
+    {
+        if (rainAudio    != null) rainAudio.volume    = v;
+        if (thunderAudio != null) thunderAudio.volume = v;
     }
 
     // =============================================
@@ -230,6 +247,13 @@ public class WeatherManager : MonoBehaviour
             rainParticle.Stop();
     }
 
+    // Panggil saat map dibuka/ditutup agar CloudOverlay tidak ganggu RenderTexture
+    public void SetCloudOverlayVisible(bool visible)
+    {
+        if (cloudOverlay != null)
+            cloudOverlay.SetActive(visible && currentWeather != WeatherType.Sunny);
+    }
+    
     // =============================================
     // CHANGE WEATHER
     // =============================================

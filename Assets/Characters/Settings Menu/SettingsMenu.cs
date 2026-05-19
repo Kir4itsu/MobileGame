@@ -53,6 +53,18 @@ public class SettingsMenu : MonoBehaviour
     private GameObject _mapTabContent;
     private GameObject _settingsTabContent;
 
+    // Audio state
+    private float _volMaster = 1.0f;
+    private float _volSFX    = 1.0f;
+    private float _volMusic  = 0.5f;
+    private const string PREF_VOL_MASTER = "audio_vol_master";
+    private const string PREF_VOL_SFX    = "audio_vol_sfx";
+    private const string PREF_VOL_MUSIC  = "audio_vol_music";
+
+    // AudioSource tags — pastikan AudioSource musik diberi tag "Music" di Inspector,
+    // dan AudioSource SFX diberi tag "SFX" (opsional, fallback ke semua non-music)
+    private const string TAG_MUSIC = "Music";
+
     // Map zoom & pan state — uvRect approach
     private RectTransform _mapImageRT;
     private RectTransform _mapViewportRT;
@@ -126,7 +138,40 @@ public class SettingsMenu : MonoBehaviour
     System.Collections.IEnumerator BuildAfterJoystick()
     {
         yield return new WaitForSeconds(0.3f);
+        LoadAudioPrefs();
         BuildUI();
+        ApplyAllAudio();
+    }
+
+    void LoadAudioPrefs()
+    {
+        _volMaster = PlayerPrefs.GetFloat(PREF_VOL_MASTER, 1.0f);
+        _volSFX    = PlayerPrefs.GetFloat(PREF_VOL_SFX,    1.0f);
+        _volMusic  = PlayerPrefs.GetFloat(PREF_VOL_MUSIC,  0.5f);
+    }
+
+    void SaveAudioPrefs()
+    {
+        PlayerPrefs.SetFloat(PREF_VOL_MASTER, _volMaster);
+        PlayerPrefs.SetFloat(PREF_VOL_SFX,    _volSFX);
+        PlayerPrefs.SetFloat(PREF_VOL_MUSIC,  _volMusic);
+        PlayerPrefs.Save();
+    }
+
+    void ApplyAllAudio()
+    {
+        // Master — AudioListener mengontrol semua suara sekaligus
+        AudioListener.volume = _volMaster;
+
+        // Music & SFX — cari semua AudioSource di scene
+        AudioSource[] allSources = FindObjectsOfType<AudioSource>(true);
+        foreach (AudioSource src in allSources)
+        {
+            if (src.CompareTag(TAG_MUSIC))
+                src.volume = _volMusic;
+            else
+                src.volume = _volSFX;
+        }
     }
 
     // ══════════════════════════════════════════════
@@ -284,7 +329,6 @@ public class SettingsMenu : MonoBehaviour
         BuildBottomBar(_pauseMenuRoot.transform);
 
         // ── Tombol Tutup & Keluar — pojok kanan bawah, anchor dari kanan frame ──
-        // Pakai anchor (1,0) tapi dengan pivot (1,0) agar edge kanan tombol = edge kanan frame - fromRight
         float btnW = 150f, btnH = 48f, btnGap = 10f;
         float fromBottom = 0f;
         float fromRight  = 16f;
@@ -384,7 +428,7 @@ public class SettingsMenu : MonoBehaviour
             _tabImages[i] = img;
 
             Text txt = AddLabelFull(tab.transform, tabNames[i], 20, _tabTextInact, FontStyle.Bold);
-            txt.alignment = TextAnchor.MiddleCenter; // center teks di dalam tab
+            txt.alignment = TextAnchor.MiddleCenter;
             _tabTexts[i] = txt;
 
             Button btn = tab.AddComponent<Button>();
@@ -401,7 +445,6 @@ public class SettingsMenu : MonoBehaviour
             lineRT.sizeDelta        = new Vector2(0f, 4f);
             line.AddComponent<Image>().color = _accentGreen;
             line.SetActive(false);
-            // simpan sebagai anak terakhir — nanti di-toggle via SwitchTab
         }
     }
 
@@ -438,7 +481,6 @@ public class SettingsMenu : MonoBehaviour
         {
             if (isMap)
             {
-                // Full width: dari 0 hingga penuh
                 _rightPanelRT.offsetMin = new Vector2(0f, 0f);
                 _rightPanelRT.offsetMax = new Vector2(-4f, 0f);
             }
@@ -450,14 +492,46 @@ public class SettingsMenu : MonoBehaviour
             }
         }
 
-        // Saat tab MAP dibuka: reset ke zoom 1x (full map terlihat)
+        // Saat tab MAP dibuka
         if (isMap)
         {
+            // ── FIX: Refresh texture kalau belum ter-assign ──────────────────
+            if (_mapRawImage != null &&
+                (_mapRawImage.texture == null || !(_mapRawImage.texture is RenderTexture)))
+            {
+                if (MapCameraRenderer.Instance != null &&
+                    MapCameraRenderer.Instance.MapRenderTexture != null)
+                {
+                    _mapRawImage.texture = MapCameraRenderer.Instance.MapRenderTexture;
+                    _mapRawImage.color   = Color.white;
+                    Debug.Log("[SettingsMenu] SwitchTab: MapRenderTexture berhasil di-refresh!");
+                }
+            }
+
+            // ── FIX WEATHER: Sembunyikan CloudOverlay agar tidak nutupin map ──
+            GameObject cloudOverlay = GameObject.Find("CloudOverlay");
+            if (cloudOverlay != null)
+            {
+                WeatherManager wm = FindObjectOfType<WeatherManager>();
+                if (wm != null) wm.SetCloudOverlayVisible(false);
+            }
+
+            // Reset zoom ke 1x (full map terlihat)
             _mapZoomCur  = 1f;
             _mapUvOffset = Vector2.zero;
             if (_mapZoomSlider != null) _mapZoomSlider.value = 1f;
             if (_mapZoomLabel  != null) _mapZoomLabel.text   = "100%";
             ApplyUvRect();
+        }
+        else
+        {
+            // ── Kembalikan CloudOverlay saat keluar dari tab MAP ──
+            GameObject cloudOverlay = GameObject.Find("CloudOverlay");
+            if (cloudOverlay != null)
+            {
+                WeatherManager wm = FindObjectOfType<WeatherManager>();
+                if (wm != null) wm.SetCloudOverlayVisible(true);
+            }
         }
     }
 
@@ -488,39 +562,23 @@ public class SettingsMenu : MonoBehaviour
         vpRT.offsetMax = new Vector2(-sliderPanelW, 0f);
         Image vpBg = viewport.AddComponent<Image>();
         vpBg.color = new Color(0.05f, 0.08f, 0.05f, 1f);
-        vpBg.raycastTarget = true; // terima drag
+        vpBg.raycastTarget = true;
         _mapViewportRT = vpRT;
 
         // ── RAWIMAGE — stretch FULL ke viewport ─────────────────────────────
-        // uvRect(x, y, w, h):
-        //   x,y = pojok kiri-bawah UV yang ditampilkan
-        //   w,h = lebar & tinggi UV yang ditampilkan (1/zoom = makin zoom in makin kecil)
-        // Zoom in  → w & h mengecil, gambar "diperbesar" di layar
-        // Zoom out → w & h mendekati 1, gambar "diperkecil" ke fit
         GameObject mapImgGO = MakeRect("MapImage", viewport.transform);
         _mapImageRT = mapImgGO.GetComponent<RectTransform>();
-        StretchFull(_mapImageRT);  // ← kunci: RawImage isi PENUH viewport
+        StretchFull(_mapImageRT);
 
         _mapRawImage         = mapImgGO.AddComponent<RawImage>();
-        _mapRawImage.color   = Color.white;
-        _mapRawImage.uvRect  = new Rect(0f, 0f, 1f, 1f); // tampilkan seluruh texture
-
-        if (MapCameraRenderer.Instance != null &&
-            MapCameraRenderer.Instance.MapRenderTexture != null)
-        {
-            _mapRawImage.texture = MapCameraRenderer.Instance.MapRenderTexture;
-        }
-        else
-        {
-            _mapRawImage.color = new Color(0.05f, 0.08f, 0.05f, 1f);
-            AddLabelAnchored(mapImgGO.transform,
-                "MapCameraRenderer tidak ditemukan. Pastikan GameObject MapCamera ada di scene.",
-                18, new Color(0.5f, 0.7f, 0.5f, 0.8f), FontStyle.Normal,
-                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800f, 60f));
-        }
+        _mapRawImage.color   = new Color(0.05f, 0.08f, 0.05f, 1f); // default gelap dulu
+        _mapRawImage.uvRect  = new Rect(0f, 0f, 1f, 1f);
 
         _mapUvOffset = Vector2.zero;
         _mapZoomCur  = 1f;
+
+        // ── FIX: Assign texture via coroutine agar MapCameraRenderer pasti sudah ready ──
+        StartCoroutine(WaitAndAssignMapTexture());
 
         // ── DRAG to PAN ─────────────────────────────────────────────────────
         UnityEngine.EventSystems.EventTrigger et =
@@ -543,15 +601,12 @@ public class SettingsMenu : MonoBehaviour
             if (!_mapIsDragging || _mapRawImage == null || _mapViewportRT == null) return;
             var pd = (UnityEngine.EventSystems.PointerEventData)data;
 
-            // Ubah pixel delta → UV delta
-            // vpSize dalam pixel (screen space setelah canvas scale)
             Vector2 vpPixel = _mapViewportRT.rect.size * _canvas.scaleFactor;
             if (vpPixel.x <= 0 || vpPixel.y <= 0) return;
 
             Vector2 pixelDelta = pd.position - _mapDragStart;
             float uvW = 1f / _mapZoomCur;
             float uvH = 1f / _mapZoomCur;
-            // drag kanan → geser UV ke kiri (offset berkurang)
             Vector2 uvDelta = new Vector2(
                 -pixelDelta.x / vpPixel.x * uvW,
                 -pixelDelta.y / vpPixel.y * uvH
@@ -641,7 +696,7 @@ public class SettingsMenu : MonoBehaviour
         _mapZoomSlider.onValueChanged.AddListener((val) =>
         {
             _mapZoomCur  = val;
-            _mapUvOffset = ClampUvOffset(_mapUvOffset); // re-clamp saat zoom berubah
+            _mapUvOffset = ClampUvOffset(_mapUvOffset);
             ApplyUvRect();
             if (_mapZoomLabel != null)
                 _mapZoomLabel.text = Mathf.RoundToInt(val * 100f) + "%";
@@ -672,8 +727,43 @@ public class SettingsMenu : MonoBehaviour
         return rightContent;
     }
 
-    // ── Clamp UV offset agar tidak pan keluar batas texture ─────────────────
-    // uvW = 1/zoom = ukuran "jendela" UV; maxOffset = 1 - uvW (sisa ruang geser)
+    // ── FIX: Coroutine untuk assign MapRenderTexture ─────────────────────────
+    // Menunggu sampai MapCameraRenderer.Instance siap, dengan timeout 5 detik.
+    // Ini solusi untuk race condition antara SettingsMenu & MapCameraRenderer.
+    System.Collections.IEnumerator WaitAndAssignMapTexture()
+    {
+        float timeout = 5f;
+        while (timeout > 0f &&
+               (MapCameraRenderer.Instance == null ||
+                MapCameraRenderer.Instance.MapRenderTexture == null))
+        {
+            yield return null;
+            timeout -= Time.unscaledDeltaTime;
+        }
+
+        if (_mapRawImage == null) yield break; // UI sudah destroy
+
+        if (MapCameraRenderer.Instance != null &&
+            MapCameraRenderer.Instance.MapRenderTexture != null)
+        {
+            _mapRawImage.texture = MapCameraRenderer.Instance.MapRenderTexture;
+            _mapRawImage.color   = Color.white;
+            Debug.Log("[SettingsMenu] MapRenderTexture berhasil di-assign ke RawImage!");
+        }
+        else
+        {
+            // Fallback: tampilkan pesan error di map
+            _mapRawImage.color = new Color(0.05f, 0.08f, 0.05f, 1f);
+            if (_mapImageRT != null)
+                AddLabelAnchored(_mapImageRT.transform,
+                    "MapCameraRenderer tidak ditemukan.\nPastikan GameObject MapCamera ada di scene.",
+                    18, new Color(0.5f, 0.7f, 0.5f, 0.8f), FontStyle.Normal,
+                    new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800f, 80f));
+            Debug.LogWarning("[SettingsMenu] MapCameraRenderer tidak ditemukan dalam 5 detik!");
+        }
+    }
+
+    // ── Clamp UV offset ─────────────────────────────────────────────────────
     Vector2 ClampUvOffset(Vector2 offset)
     {
         float uvW   = 1f / _mapZoomCur;
@@ -684,7 +774,7 @@ public class SettingsMenu : MonoBehaviour
                            Mathf.Clamp(offset.y, 0f, maxY));
     }
 
-    // ── Apply uvRect ke RawImage ──────────────────────────────────────────────
+    // ── Apply uvRect ke RawImage ─────────────────────────────────────────────
     void ApplyUvRect()
     {
         if (_mapRawImage == null) return;
@@ -693,10 +783,10 @@ public class SettingsMenu : MonoBehaviour
         _mapRawImage.uvRect = new Rect(_mapUvOffset.x, _mapUvOffset.y, uvW, uvH);
     }
 
-    // ── Helper: clamp (legacy stub agar fungsi lama tidak error) ─────────────
+    // ── Helper stub ──────────────────────────────────────────────────────────
     Vector2 ClampMapPosition(Vector2 pos, RectTransform vpRT) => pos;
 
-    // ── AddLabelHelper: versi anchoredPosition ──
+    // ── AddLabelHelper: versi anchoredPosition ──────────────────────────────
     Text AddLabelHelper(Transform parent, string text, int size, Color color,
                         Vector2 anchor, Vector2 pos, Vector2 sizeDelta)
     {
@@ -746,7 +836,6 @@ public class SettingsMenu : MonoBehaviour
         GameObject rightContent = MakeRect("SettingsRight", rightParent);
         StretchFull(rightContent.GetComponent<RectTransform>());
 
-        // Buat panel per-kategori
         BuildCategoryPanel_Kontrol(rightContent.transform);
         BuildCategoryPanel_Grafik(rightContent.transform);
         BuildCategoryPanel_Suara(rightContent.transform);
@@ -831,7 +920,6 @@ public class SettingsMenu : MonoBehaviour
         if (_btnGfxReset != null) _btnGfxReset.SetActive(isGrafik);
     }
 
-    // RefreshTabVisibility — dipanggil manual jika perlu sync ulang dari luar
     void RefreshTabVisibility()
     {
         if (_mapLeftPanel      != null) _mapLeftPanel.SetActive(_activeTab == 0);
@@ -854,11 +942,10 @@ public class SettingsMenu : MonoBehaviour
         AddSectionTitle(panel.transform, "Kontrol & Layout", -30f);
         AddRowSeparator(panel.transform, -75f);
 
-        // Baris: Edit Layout Tombol
         AddSettingRow(panel.transform, "Edit Layout Tombol",
             "Atur posisi & ukuran tombol HUD", -110f,
             () => { CloseSettings(); StartEditMode(); },
-            "EDIT", _accentBlue);
+            "EDIT", _accentNeutral);
 
         AddRowSeparator(panel.transform, -165f);
 
@@ -866,7 +953,6 @@ public class SettingsMenu : MonoBehaviour
             "Sesuaikan respons analog", -205f,
             null, null, Color.clear);
 
-        // Slider sensitivitas (placeholder visual)
         AddSliderRow(panel.transform, -250f, 0.65f);
 
         AddRowSeparator(panel.transform, -285f);
@@ -879,15 +965,12 @@ public class SettingsMenu : MonoBehaviour
         StretchFull(panel.GetComponent<RectTransform>());
         _contentPanels.Add(panel);
 
-        // Langsung embed GraphicsSettings ke dalam panel ini.
-        // Tidak ada popup — semua kontrol grafik muncul di panel kanan.
         if (GraphicsSettings.Instance != null)
         {
             GraphicsSettings.Instance.EmbedInto(panel.transform);
         }
         else
         {
-            // Fallback jika GraphicsSettings belum siap (misalnya belum di-attach ke scene)
             AddSectionTitle(panel.transform, "Pengaturan Grafik", -30f);
             AddRowSeparator(panel.transform, -75f);
             AddSettingRow(panel.transform, "GraphicsSettings tidak ditemukan",
@@ -897,6 +980,10 @@ public class SettingsMenu : MonoBehaviour
     }
 
     // ── SUARA ────────────────────────────────────
+    private const string KEY_VOL_MASTER = "audio_vol_master";
+    private const string KEY_VOL_SFX    = "audio_vol_sfx";
+    private const string KEY_VOL_MUSIC  = "audio_vol_music";
+
     void BuildCategoryPanel_Suara(Transform parent)
     {
         GameObject panel = MakeRect("Content_Suara", parent);
@@ -906,21 +993,153 @@ public class SettingsMenu : MonoBehaviour
         AddSectionTitle(panel.transform, "Audio", -30f);
         AddRowSeparator(panel.transform, -75f);
 
+        float valMaster = PlayerPrefs.GetFloat(KEY_VOL_MASTER, 0.80f);
+        float valSfx    = PlayerPrefs.GetFloat(KEY_VOL_SFX,    0.70f);
+        float valMusic  = PlayerPrefs.GetFloat(KEY_VOL_MUSIC,  0.50f);
+
+        ApplyMasterVolume(valMaster);
+        ApplySfxVolume(valSfx);
+        ApplyMusicVolume(valMusic);
+
         AddSettingRow(panel.transform, "Volume Master",
             "Volume keseluruhan game", -110f, null, null, Color.clear);
-        AddSliderRow(panel.transform, -155f, 0.80f);
+        AddAudioSliderRow(panel.transform, -110f, valMaster, v => {
+            ApplyMasterVolume(v);
+            PlayerPrefs.SetFloat(KEY_VOL_MASTER, v);
+            PlayerPrefs.Save();
+        });
 
-        AddRowSeparator(panel.transform, -190f);
+        AddRowSeparator(panel.transform, -195f);
 
         AddSettingRow(panel.transform, "Volume Efek",
-            "Suara efek & lingkungan", -230f, null, null, Color.clear);
-        AddSliderRow(panel.transform, -275f, 0.70f);
+            "Suara efek & lingkungan", -235f, null, null, Color.clear);
+        AddAudioSliderRow(panel.transform, -235f, valSfx, v => {
+            ApplySfxVolume(v);
+            PlayerPrefs.SetFloat(KEY_VOL_SFX, v);
+            PlayerPrefs.Save();
+        });
 
-        AddRowSeparator(panel.transform, -310f);
+        AddRowSeparator(panel.transform, -320f);
 
         AddSettingRow(panel.transform, "Volume Musik",
-            "Musik latar", -350f, null, null, Color.clear);
-        AddSliderRow(panel.transform, -395f, 0.50f);
+            "Musik latar", -360f, null, null, Color.clear);
+        AddAudioSliderRow(panel.transform, -360f, valMusic, v => {
+            ApplyMusicVolume(v);
+            PlayerPrefs.SetFloat(KEY_VOL_MUSIC, v);
+            PlayerPrefs.Save();
+        });
+    }
+
+    void ApplyMasterVolume(float v)
+    {
+        AudioListener.volume = v;
+    }
+
+    void ApplySfxVolume(float v)
+    {
+        foreach (var wm in FindObjectsOfType<WeatherManager>())
+            wm.SetSfxVolume(v);
+
+        AudioVolumeManager.SfxVolume = v;
+    }
+
+    void ApplyMusicVolume(float v)
+    {
+        foreach (var p in FindObjectsOfType<MusicPlayerPhone>())
+            p.SetMusicVolume(v);
+
+        foreach (var p in FindObjectsOfType<VehicleMusicPlayer>())
+            p.SetMusicVolume(v);
+
+        AudioVolumeManager.MusicVolume = v;
+    }
+
+    void AddAudioSliderRow(Transform parent, float y, float initValue,
+                           System.Action<float> onChange)
+    {
+        GameObject container = MakeRect("AudioSliderContainer", parent);
+        RectTransform cRT = container.GetComponent<RectTransform>();
+        cRT.anchorMin        = new Vector2(1f, 1f);
+        cRT.anchorMax        = new Vector2(1f, 1f);
+        cRT.pivot            = new Vector2(1f, 0.5f);
+        cRT.anchoredPosition = new Vector2(-80f, y - 16f);
+        cRT.sizeDelta        = new Vector2(320f, 28f);
+
+        GameObject trackBg = MakeRect("Background", container.transform);
+        RectTransform tbRT = trackBg.GetComponent<RectTransform>();
+        tbRT.anchorMin = new Vector2(0f, 0.4f);
+        tbRT.anchorMax = new Vector2(1f, 0.6f);
+        tbRT.offsetMin = Vector2.zero;
+        tbRT.offsetMax = Vector2.zero;
+        trackBg.AddComponent<Image>().color = new Color(0.25f, 0.25f, 0.25f, 1f);
+
+        GameObject fillArea = MakeRect("Fill Area", container.transform);
+        RectTransform faRT = fillArea.GetComponent<RectTransform>();
+        faRT.anchorMin = new Vector2(0f, 0.4f);
+        faRT.anchorMax = new Vector2(1f, 0.6f);
+        faRT.offsetMin = new Vector2(0f,  0f);
+        faRT.offsetMax = new Vector2(-8f, 0f);
+
+        GameObject fill = MakeRect("Fill", fillArea.transform);
+        RectTransform fRT = fill.GetComponent<RectTransform>();
+        fRT.anchorMin = new Vector2(0f, 0f);
+        fRT.anchorMax = new Vector2(0f, 1f);
+        fRT.offsetMin = Vector2.zero;
+        fRT.offsetMax = Vector2.zero;
+        fill.AddComponent<Image>().color = _accentGreen;
+
+        GameObject handleArea = MakeRect("Handle Slide Area", container.transform);
+        RectTransform haRT = handleArea.GetComponent<RectTransform>();
+        haRT.anchorMin = new Vector2(0f, 0f);
+        haRT.anchorMax = new Vector2(1f, 1f);
+        haRT.offsetMin = new Vector2(8f, 0f);
+        haRT.offsetMax = new Vector2(-8f, 0f);
+
+        GameObject handle = MakeRect("Handle", handleArea.transform);
+        RectTransform hRT = handle.GetComponent<RectTransform>();
+        hRT.anchorMin  = new Vector2(0f, 0.5f);
+        hRT.anchorMax  = new Vector2(0f, 0.5f);
+        hRT.sizeDelta  = new Vector2(20f, 20f);
+        Image handleImg = handle.AddComponent<Image>();
+        handleImg.color  = Color.white;
+        handleImg.sprite = CreateRoundedSprite(10);
+
+        Slider slider = container.AddComponent<Slider>();
+        slider.fillRect         = fRT;
+        slider.handleRect       = hRT;
+        slider.targetGraphic    = handleImg;
+        slider.direction        = Slider.Direction.LeftToRight;
+        slider.minValue         = 0f;
+        slider.maxValue         = 1f;
+        slider.wholeNumbers     = false;
+        slider.value            = initValue;
+
+        ColorBlock cb = slider.colors;
+        cb.normalColor      = Color.white;
+        cb.highlightedColor = new Color(0.85f, 1f, 0.85f, 1f);
+        cb.pressedColor     = new Color(0.6f,  1f, 0.6f,  1f);
+        slider.colors = cb;
+
+        GameObject pctGO = MakeRect("PctLabel", parent);
+        RectTransform pRT = pctGO.GetComponent<RectTransform>();
+        pRT.anchorMin        = new Vector2(1f, 1f);
+        pRT.anchorMax        = new Vector2(1f, 1f);
+        pRT.pivot            = new Vector2(1f, 0.5f);
+        pRT.anchoredPosition = new Vector2(-16f, y - 16f);
+        pRT.sizeDelta        = new Vector2(58f, 24f);
+        Text pctTxt = pctGO.AddComponent<Text>();
+        pctTxt.font          = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        pctTxt.fontSize      = 15;
+        pctTxt.fontStyle     = FontStyle.Bold;
+        pctTxt.color         = new Color(0.55f, 0.55f, 0.53f, 1f);
+        pctTxt.alignment     = TextAnchor.MiddleRight;
+        pctTxt.raycastTarget = false;
+        pctTxt.text          = Mathf.RoundToInt(initValue * 100f) + "%";
+
+        slider.onValueChanged.AddListener(v => {
+            onChange?.Invoke(v);
+            if (pctTxt != null) pctTxt.text = Mathf.RoundToInt(v * 100f) + "%";
+        });
     }
 
     // ── TAMPILAN ──────────────────────────────────
@@ -952,7 +1171,7 @@ public class SettingsMenu : MonoBehaviour
     }
 
     // ──────────────────────────────────────────────
-    //  BOTTOM BAR  (Esc Back | Enter Select)
+    //  BOTTOM BAR
     // ──────────────────────────────────────────────
     void BuildBottomBar(Transform parent)
     {
@@ -965,7 +1184,6 @@ public class SettingsMenu : MonoBehaviour
         rt.sizeDelta        = new Vector2(0f, 48f);
         bar.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.04f, 1f);
 
-        // Hint kiri
         AddLabelAnchored(bar.transform,
             "ESC  Kembali    ENTER  Pilih",
             16, new Color(0.55f, 0.55f, 0.55f, 1f), FontStyle.Normal,
@@ -997,24 +1215,21 @@ public class SettingsMenu : MonoBehaviour
     void AddSettingRow(Transform parent, string label, string sub, float y,
                        System.Action btnAction, string btnLabel, Color btnColor)
     {
-        // Label kiri
         AddLabelAnchored(parent, label, 20,
             new Color(0.88f, 0.88f, 0.84f, 1f), FontStyle.Normal,
             new Vector2(0f, 1f), new Vector2(30f, y - 2f), new Vector2(420f, 28f));
 
-        // Sub-label
         AddLabelAnchored(parent, sub, 15,
             new Color(0.52f, 0.52f, 0.50f, 1f), FontStyle.Normal,
             new Vector2(0f, 1f), new Vector2(30f, y - 30f), new Vector2(420f, 22f));
 
-        // Tombol aksi (opsional)
         if (btnAction != null && btnLabel != null)
         {
             GameObject ab = MakeRect("Btn_" + btnLabel, parent);
             RectTransform aRT = ab.GetComponent<RectTransform>();
             aRT.anchorMin        = new Vector2(1f, 1f);
             aRT.anchorMax        = new Vector2(1f, 1f);
-            aRT.pivot            = new Vector2(1f, 0.5f); // edge kanan tombol = edge kanan panel
+            aRT.pivot            = new Vector2(1f, 0.5f);
             aRT.anchoredPosition = new Vector2(-16f, y - 22f);
             aRT.sizeDelta        = new Vector2(130f, 44f);
             ab.AddComponent<Image>().color  = btnColor;
@@ -1026,7 +1241,6 @@ public class SettingsMenu : MonoBehaviour
 
     void AddSliderRow(Transform parent, float y, float value)
     {
-        // Track
         GameObject track = MakeRect("SliderTrack", parent);
         RectTransform tRT = track.GetComponent<RectTransform>();
         tRT.anchorMin        = new Vector2(0f, 1f);
@@ -1036,7 +1250,6 @@ public class SettingsMenu : MonoBehaviour
         tRT.sizeDelta        = new Vector2(500f, 6f);
         track.AddComponent<Image>().color = new Color(0.25f, 0.25f, 0.25f, 1f);
 
-        // Fill
         GameObject fill = MakeRect("SliderFill", track.transform);
         RectTransform fRT = fill.GetComponent<RectTransform>();
         fRT.anchorMin        = new Vector2(0f, 0f);
@@ -1045,7 +1258,6 @@ public class SettingsMenu : MonoBehaviour
         fRT.offsetMax        = Vector2.zero;
         fill.AddComponent<Image>().color = _accentGreen;
 
-        // Thumb
         GameObject thumb = MakeRect("Thumb", track.transform);
         RectTransform thRT = thumb.GetComponent<RectTransform>();
         thRT.anchorMin        = new Vector2(value, 0.5f);
@@ -1060,7 +1272,6 @@ public class SettingsMenu : MonoBehaviour
 
     void AddToggleRow(Transform parent, float y, bool on)
     {
-        // Toggle pill background
         GameObject pill = MakeRect("Toggle", parent);
         RectTransform pRT = pill.GetComponent<RectTransform>();
         pRT.anchorMin        = new Vector2(1f, 1f);
@@ -1072,7 +1283,6 @@ public class SettingsMenu : MonoBehaviour
         pillImg.color  = on ? _accentGreen : new Color(0.25f, 0.25f, 0.25f, 1f);
         pillImg.sprite = CreateRoundedSprite(14);
 
-        // Thumb dalam toggle
         GameObject tThumb = MakeRect("TThumb", pill.transform);
         RectTransform ttRT = tThumb.GetComponent<RectTransform>();
         ttRT.anchorMin        = on ? new Vector2(1f, 0.5f) : new Vector2(0f, 0.5f);
@@ -1089,7 +1299,7 @@ public class SettingsMenu : MonoBehaviour
     }
 
     // ──────────────────────────────────────────────
-    //  EDIT MODE OVERLAY  (sama seperti sebelumnya)
+    //  EDIT MODE OVERLAY
     // ──────────────────────────────────────────────
     void BuildEditOverlay(Transform parent)
     {
@@ -1098,79 +1308,150 @@ public class SettingsMenu : MonoBehaviour
         RectTransform overlayRT = _editModeOverlay.AddComponent<RectTransform>();
         StretchFull(overlayRT);
         Image overlayImg         = _editModeOverlay.AddComponent<Image>();
-        overlayImg.color         = new Color(0f, 0f, 0f, 0.3f);
+        overlayImg.color         = new Color(0f, 0f, 0f, 0.25f);
         overlayImg.raycastTarget = false;
 
-        // Hint atas
-        GameObject hintGO = MakeRect("HintText", _editModeOverlay.transform);
-        RectTransform hintRT = hintGO.GetComponent<RectTransform>();
-        hintRT.anchorMin        = new Vector2(0f, 1f);
-        hintRT.anchorMax        = new Vector2(1f, 1f);
-        hintRT.pivot            = new Vector2(0.5f, 1f);
-        hintRT.anchoredPosition = new Vector2(0f, -30f);
-        hintRT.sizeDelta        = new Vector2(0f, 60f);
-        _editModeHint           = hintGO.AddComponent<Text>();
-        _editModeHint.text      = "✏ MODE EDIT — Drag tombol • Sudut kuning = resize";
-        _editModeHint.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        _editModeHint.fontSize  = 22;
-        _editModeHint.fontStyle = FontStyle.Bold;
-        _editModeHint.color     = new Color(1f, 0.9f, 0.2f, 1f);
-        _editModeHint.alignment = TextAnchor.MiddleCenter;
+        GameObject hintBar = MakeRect("HintBar", _editModeOverlay.transform);
+        RectTransform hintBarRT = hintBar.GetComponent<RectTransform>();
+        hintBarRT.anchorMin        = new Vector2(0f, 1f);
+        hintBarRT.anchorMax        = new Vector2(1f, 1f);
+        hintBarRT.pivot            = new Vector2(0.5f, 1f);
+        hintBarRT.anchoredPosition = Vector2.zero;
+        hintBarRT.sizeDelta        = new Vector2(0f, 52f);
+        Image hintBarImg = hintBar.AddComponent<Image>();
+        hintBarImg.color         = new Color(0.04f, 0.04f, 0.04f, 0.92f);
+        hintBarImg.raycastTarget = false;
 
-        // Resize panel
+        GameObject hintLine = MakeRect("HintLine", _editModeOverlay.transform);
+        RectTransform hintLineRT = hintLine.GetComponent<RectTransform>();
+        hintLineRT.anchorMin        = new Vector2(0f, 1f);
+        hintLineRT.anchorMax        = new Vector2(1f, 1f);
+        hintLineRT.pivot            = new Vector2(0.5f, 1f);
+        hintLineRT.anchoredPosition = new Vector2(0f, -52f);
+        hintLineRT.sizeDelta        = new Vector2(0f, 2f);
+        hintLine.AddComponent<Image>().color = new Color(1f, 0.85f, 0.1f, 0.55f);
+
+        GameObject hintGO = MakeRect("HintText", hintBar.transform);
+        RectTransform hintRT = hintGO.GetComponent<RectTransform>();
+        hintRT.anchorMin = Vector2.zero;
+        hintRT.anchorMax = Vector2.one;
+        hintRT.offsetMin = Vector2.zero;
+        hintRT.offsetMax = Vector2.zero;
+        _editModeHint           = hintGO.AddComponent<Text>();
+        _editModeHint.text      = "✏  MODE EDIT  —  Drag tombol  •  Sudut kuning = resize";
+        _editModeHint.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        _editModeHint.fontSize  = 20;
+        _editModeHint.fontStyle = FontStyle.Bold;
+        _editModeHint.color     = new Color(1f, 0.88f, 0.15f, 1f);
+        _editModeHint.alignment = TextAnchor.MiddleCenter;
+        _editModeHint.raycastTarget = false;
+
+        float rPanelW = 440f;
+        float rPanelH = 130f;
+        float rHeaderH = 42f;
+        float rBodyCenterY = -(rHeaderH + (rPanelH - rHeaderH) * 0.5f);
+        float rBtnW  = 70f;
+        float rBtnH  = 44f;
+        float rLblW  = 220f;
+
         GameObject resizePanelGO = MakeRect("ResizePanel", _editModeOverlay.transform);
         RectTransform rPRT = resizePanelGO.GetComponent<RectTransform>();
         rPRT.anchorMin        = new Vector2(0.5f, 0f);
         rPRT.anchorMax        = new Vector2(0.5f, 0f);
         rPRT.pivot            = new Vector2(0.5f, 0f);
-        rPRT.anchoredPosition = new Vector2(0f, 130f);
-        rPRT.sizeDelta        = new Vector2(340f, 100f);
+        rPRT.anchoredPosition = new Vector2(0f, 80f);
+        rPRT.sizeDelta        = new Vector2(rPanelW, rPanelH);
         Image rPImg  = resizePanelGO.AddComponent<Image>();
-        rPImg.color  = new Color(0.08f, 0.08f, 0.08f, 0.85f);
+        rPImg.color  = _bgDark;
         rPImg.sprite = CreateRoundedSprite(10);
-        rPImg.raycastTarget = false;
+        rPImg.raycastTarget = true;
 
-        AddLabelAnchored(resizePanelGO.transform, "Ukuran Tombol", 18,
-            new Color(0.8f, 0.8f, 0.8f, 1f), FontStyle.Normal,
-            new Vector2(0.5f, 1f), new Vector2(0f, -18f), new Vector2(300f, 28f));
+        GameObject rPHeader = MakeRect("ResizePanelHeader", resizePanelGO.transform);
+        RectTransform rPHRT = rPHeader.GetComponent<RectTransform>();
+        rPHRT.anchorMin        = new Vector2(0f, 1f);
+        rPHRT.anchorMax        = new Vector2(1f, 1f);
+        rPHRT.pivot            = new Vector2(0.5f, 1f);
+        rPHRT.anchoredPosition = Vector2.zero;
+        rPHRT.sizeDelta        = new Vector2(0f, rHeaderH);
+        Image rPHImg = rPHeader.AddComponent<Image>();
+        rPHImg.color  = _headerBg;
+        rPHImg.sprite = CreateRoundedSprite(10);
+        rPHImg.raycastTarget = false;
 
-        _rtBtnMinus = MakeActionButton(resizePanelGO.transform, "-",
-            new Color(0.7f, 0.2f, 0.2f, 0.9f),
-            new Vector2(-85f, -65f), new Vector2(70f, 44f),
+        AddLabel(rPHeader.transform, "↕  UKURAN TOMBOL", 17, new Color(0.88f, 0.88f, 0.84f, 1f));
+
+        GameObject rPHLine = MakeRect("HeaderLine", resizePanelGO.transform);
+        RectTransform rPHLRT = rPHLine.GetComponent<RectTransform>();
+        rPHLRT.anchorMin        = new Vector2(0f, 1f);
+        rPHLRT.anchorMax        = new Vector2(1f, 1f);
+        rPHLRT.pivot            = new Vector2(0.5f, 1f);
+        rPHLRT.anchoredPosition = new Vector2(0f, -rHeaderH);
+        rPHLRT.sizeDelta        = new Vector2(0f, 1f);
+        rPHLine.AddComponent<Image>().color = _separator;
+
+        _rtBtnMinus = MakeActionButton(resizePanelGO.transform, "−",
+            _accentRed,
+            new Vector2(-(rLblW * 0.5f + rBtnW * 0.5f + 8f), rBodyCenterY),
+            new Vector2(rBtnW, rBtnH),
             () => FloatingJoystick.Instance?.ResizeSelectedButton(-15f),
             new Vector2(0.5f, 1f));
 
-        // Label tombol terpilih
         GameObject selLblGO = MakeRect("SelectedLabel", resizePanelGO.transform);
         RectTransform slRT = selLblGO.GetComponent<RectTransform>();
         slRT.anchorMin        = new Vector2(0.5f, 1f);
         slRT.anchorMax        = new Vector2(0.5f, 1f);
         slRT.pivot            = new Vector2(0.5f, 0.5f);
-        slRT.anchoredPosition = new Vector2(0f, -65f);
-        slRT.sizeDelta        = new Vector2(120f, 44f);
+        slRT.anchoredPosition = new Vector2(0f, rBodyCenterY);
+        slRT.sizeDelta        = new Vector2(rLblW, rBtnH);
         _resizeTargetLabel               = selLblGO.AddComponent<Text>();
         _resizeTargetLabel.text          = "Tap tombol";
         _resizeTargetLabel.font          = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        _resizeTargetLabel.fontSize      = 15;
+        _resizeTargetLabel.fontSize      = 17;
         _resizeTargetLabel.fontStyle     = FontStyle.Bold;
-        _resizeTargetLabel.color         = new Color(0.7f, 0.9f, 1f, 1f);
+        _resizeTargetLabel.color         = new Color(0.55f, 0.55f, 0.53f, 1f);
         _resizeTargetLabel.alignment     = TextAnchor.MiddleCenter;
         _resizeTargetLabel.raycastTarget = false;
 
         _rtBtnPlus = MakeActionButton(resizePanelGO.transform, "+",
-            new Color(0.1f, 0.6f, 0.2f, 0.9f),
-            new Vector2(85f, -65f), new Vector2(70f, 44f),
+            _accentGreen,
+            new Vector2(rLblW * 0.5f + rBtnW * 0.5f + 8f, rBodyCenterY),
+            new Vector2(rBtnW, rBtnH),
             () => FloatingJoystick.Instance?.ResizeSelectedButton(15f),
             new Vector2(0.5f, 1f));
 
-        _rtBtnReset = MakeActionButton(_editModeOverlay.transform, "↺ Reset",
-            _accentNeutral, new Vector2(0f, 130f + 110f), new Vector2(140f, 44f),
-            () => FloatingJoystick.Instance?.ResetLayout(),
-            new Vector2(0.5f, 0f));
+        float editBarH = 72f;
+        float editBtnH = 48f;
 
-        _rtBtnSelesai = MakeActionButton(_editModeOverlay.transform, "✔ Selesai & Simpan",
-            _accentGreen, new Vector2(0f, 50f), new Vector2(280f, 65f),
-            StopEditMode, new Vector2(0.5f, 0f));
+        GameObject bottomBar = MakeRect("EditBottomBar", _editModeOverlay.transform);
+        RectTransform bbRT = bottomBar.GetComponent<RectTransform>();
+        bbRT.anchorMin        = new Vector2(0f, 0f);
+        bbRT.anchorMax        = new Vector2(1f, 0f);
+        bbRT.pivot            = new Vector2(0.5f, 0f);
+        bbRT.anchoredPosition = Vector2.zero;
+        bbRT.sizeDelta        = new Vector2(0f, editBarH);
+        Image bbImg = bottomBar.AddComponent<Image>();
+        bbImg.color = new Color(0.04f, 0.04f, 0.04f, 0.92f);
+
+        GameObject bbLine = MakeRect("BottomBarLine", _editModeOverlay.transform);
+        RectTransform bbLRT = bbLine.GetComponent<RectTransform>();
+        bbLRT.anchorMin        = new Vector2(0f, 0f);
+        bbLRT.anchorMax        = new Vector2(1f, 0f);
+        bbLRT.pivot            = new Vector2(0.5f, 0f);
+        bbLRT.anchoredPosition = new Vector2(0f, editBarH);
+        bbLRT.sizeDelta        = new Vector2(0f, 1f);
+        bbLine.AddComponent<Image>().color = new Color(0.5f, 0.5f, 0.5f, 0.25f);
+
+        _rtBtnReset = MakeActionButton(bottomBar.transform, "↺  Reset",
+            _accentNeutral,
+            new Vector2(0f, 0f), new Vector2(148f, editBtnH),
+            () => FloatingJoystick.Instance?.ResetLayout(),
+            new Vector2(0.08f, 0.5f));
+
+        _rtBtnSelesai = MakeActionButton(bottomBar.transform, "✔  Selesai & Simpan",
+            _accentGreen,
+            new Vector2(0f, 0f), new Vector2(260f, editBtnH),
+            StopEditMode,
+            new Vector2(0.92f, 0.5f));
 
         _editModeOverlay.SetActive(false);
     }
@@ -1181,7 +1462,7 @@ public class SettingsMenu : MonoBehaviour
     public void ToggleSettings()
     {
         if (_isEditMode) return;
-        if (_pauseMenuRoot == null) return; // UI belum siap, abaikan input
+        if (_pauseMenuRoot == null) return;
 
         _isSettingsOpen = !_isSettingsOpen;
         _pauseMenuRoot.SetActive(_isSettingsOpen);
@@ -1199,9 +1480,6 @@ public class SettingsMenu : MonoBehaviour
         if (_raycaster      != null) _raycaster.enabled = false;
         Time.timeScale = 1f;
     }
-
-    // OpenGraphics & CloseGraphics dihapus — GraphicsSettings sekarang
-    // langsung di-embed di panel kanan via BuildCategoryPanel_Grafik.
 
     void StartEditMode()
     {
@@ -1234,27 +1512,22 @@ public class SettingsMenu : MonoBehaviour
 
     void ConfirmExit()
     {
-        // Jeda game tapi tetap tampilkan menu
         Time.timeScale = 0f;
 
-        // Buat panel
         GameObject confirmGO = new GameObject("ConfirmExitPanel");
         confirmGO.transform.SetParent(_canvas.transform, false);
-        
-        // RectTransform
+
         RectTransform rt = confirmGO.AddComponent<RectTransform>();
         rt.sizeDelta = new Vector2(520f, 280f);
         rt.anchorMin = new Vector2(0.5f, 0.5f);
         rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
         rt.anchoredPosition = Vector2.zero;
-        
-        // Background
+
         Image bg = confirmGO.AddComponent<Image>();
         bg.color = _bgDark;
         bg.sprite = CreateRoundedSprite(12);
-        
-        // Header bar
+
         GameObject headerBar = new GameObject("HeaderBar");
         headerBar.transform.SetParent(confirmGO.transform, false);
         RectTransform headerRT = headerBar.AddComponent<RectTransform>();
@@ -1265,8 +1538,7 @@ public class SettingsMenu : MonoBehaviour
         headerRT.sizeDelta = new Vector2(0f, 56f);
         Image headerImg = headerBar.AddComponent<Image>();
         headerImg.color = _headerBg;
-        
-        // Title
+
         GameObject titleGO = new GameObject("Title");
         titleGO.transform.SetParent(headerBar.transform, false);
         RectTransform titleRT = titleGO.AddComponent<RectTransform>();
@@ -1282,8 +1554,7 @@ public class SettingsMenu : MonoBehaviour
         titleText.color = new Color(0.9f, 0.9f, 0.85f, 1f);
         titleText.alignment = TextAnchor.MiddleCenter;
         titleText.raycastTarget = false;
-        
-        // Garis pemisah
+
         GameObject headerLine = new GameObject("HeaderLine");
         headerLine.transform.SetParent(confirmGO.transform, false);
         RectTransform hlRT = headerLine.AddComponent<RectTransform>();
@@ -1293,8 +1564,7 @@ public class SettingsMenu : MonoBehaviour
         hlRT.anchoredPosition = new Vector2(0f, -56f);
         hlRT.sizeDelta = new Vector2(0f, 2f);
         headerLine.AddComponent<Image>().color = _separator;
-        
-        // Pesan
+
         GameObject msgGO = new GameObject("Message");
         msgGO.transform.SetParent(confirmGO.transform, false);
         RectTransform msgRT = msgGO.AddComponent<RectTransform>();
@@ -1310,8 +1580,7 @@ public class SettingsMenu : MonoBehaviour
         msgText.color = new Color(0.65f, 0.65f, 0.62f, 1f);
         msgText.alignment = TextAnchor.MiddleCenter;
         msgText.raycastTarget = false;
-        
-        // Tombol YES
+
         GameObject btnYes = new GameObject("Btn_Yes");
         btnYes.transform.SetParent(confirmGO.transform, false);
         RectTransform btnYesRT = btnYes.AddComponent<RectTransform>();
@@ -1323,7 +1592,7 @@ public class SettingsMenu : MonoBehaviour
         Image btnYesImg = btnYes.AddComponent<Image>();
         btnYesImg.color = _accentRed;
         btnYesImg.sprite = CreateRoundedSprite(8);
-        
+
         GameObject btnYesLabel = new GameObject("Label");
         btnYesLabel.transform.SetParent(btnYes.transform, false);
         RectTransform btnYesLabelRT = btnYesLabel.AddComponent<RectTransform>();
@@ -1338,11 +1607,10 @@ public class SettingsMenu : MonoBehaviour
         btnYesText.fontStyle = FontStyle.Bold;
         btnYesText.color = Color.white;
         btnYesText.alignment = TextAnchor.MiddleCenter;
-        
+
         Button btnYesBtn = btnYes.AddComponent<Button>();
         btnYesBtn.onClick.AddListener(() => { Time.timeScale = 1f; Destroy(confirmGO); ExitGame(); });
-        
-        // Tombol NO
+
         GameObject btnNo = new GameObject("Btn_No");
         btnNo.transform.SetParent(confirmGO.transform, false);
         RectTransform btnNoRT = btnNo.AddComponent<RectTransform>();
@@ -1354,7 +1622,7 @@ public class SettingsMenu : MonoBehaviour
         Image btnNoImg = btnNo.AddComponent<Image>();
         btnNoImg.color = _accentNeutral;
         btnNoImg.sprite = CreateRoundedSprite(8);
-        
+
         GameObject btnNoLabel = new GameObject("Label");
         btnNoLabel.transform.SetParent(btnNo.transform, false);
         RectTransform btnNoLabelRT = btnNoLabel.AddComponent<RectTransform>();
@@ -1369,11 +1637,10 @@ public class SettingsMenu : MonoBehaviour
         btnNoText.fontStyle = FontStyle.Bold;
         btnNoText.color = Color.white;
         btnNoText.alignment = TextAnchor.MiddleCenter;
-        
+
         Button btnNoBtn = btnNo.AddComponent<Button>();
         btnNoBtn.onClick.AddListener(() => { Time.timeScale = 0f; Destroy(confirmGO); });
-        
-        // Fade in effect
+
         CanvasGroup cg = confirmGO.AddComponent<CanvasGroup>();
         cg.alpha = 0f;
         StartCoroutine(FadePanel(cg, 0f, 1f, 0.2f));
@@ -1554,4 +1821,13 @@ public class SettingsMenu : MonoBehaviour
     // ──────────────────────────────────────────────
     public void HideSettingsButton() { if (_pauseButton) _pauseButton.SetActive(false); }
     public void ShowSettingsButton() { if (_pauseButton) _pauseButton.SetActive(true);  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  AudioVolumeManager
+// ══════════════════════════════════════════════════════════════════════════════
+public static class AudioVolumeManager
+{
+    public static float SfxVolume   { get; set; } = 0.70f;
+    public static float MusicVolume { get; set; } = 0.50f;
 }
