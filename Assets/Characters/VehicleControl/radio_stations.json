@@ -1,24 +1,14 @@
 {
   "stations": [
     {
-      "name": "Hard Rock FM Jakarta",
-      "url": "https://n10.radiojar.com/7csmg90fuqruv",
-      "genre": "Rock"
-    },
-    {
       "name": "Capital FM",
       "url": "https://media-ice.musicradio.com/CapitalMP3",
       "genre": "Pop"
     },
     {
-      "name": "Kiss FM",
-      "url": "https://radioindia.net/radio/kissfmindia/icecast.audio",
-      "genre": "Hits"
-    },
-    {
-      "name": "Radio Mast Test",
-      "url": "https://stream.radiomast.io/ref-128mp3",
-      "genre": "Test"
+      "name": "Hard Rock FM",
+      "url": "https://n10.radiojar.com/7csmg90fuqruv",
+      "genre": "Rock"
     }
   ]
 }
