@@ -1,85 +1,68 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.Networking;
 using System.Collections;
-using System.Collections.Generic;
 
 /// <summary>
-/// VehicleMusicPlayer — Sistem Radio Streaming di dalam kendaraan.
+/// VehicleMusicPlayer — Sistem musik lokal ala GTA 5 di dalam kendaraan.
 ///
 /// Cara pakai:
-/// 1. Attach script ini ke GameObject mobil (sama dengan VehicleController)
-/// 2. OPSI A — Isi radioStations langsung di Inspector (nama + URL stream)
-/// 3. OPSI B — Isi radioJsonUrl dengan URL JSON dari server kamu
-///             Format JSON: { "stations": [ {"name":"...","url":"...","genre":"..."} ] }
-/// 4. EnterVehicle/ExitVehicle akan otomatis Show/Hide UI radio
-///    — panggil ShowMusicUI() dari VehicleController.EnterVehicle
-///    — panggil HideMusicUI() dari VehicleController.ExitVehicle
+/// 1. Attach script ini ke GameObject mobil
+/// 2. Di Inspector, assign AudioClip[] songs — drag file MP3/WAV ke array
+/// 3. Isi stationName sesuai keinginan (misal "SELF RADIO")
+/// 4. ShowMusicUI() & HideMusicUI() dipanggil otomatis dari VehicleController
 ///
-/// CATATAN ANDROID:
-/// - Wajib HTTPS atau tambahkan "cleartextTrafficPermitted=true" di AndroidManifest.xml
-/// - Tambahkan permission INTERNET di AndroidManifest.xml
-/// - Format stream yang didukung: MP3 (AudioType.MPEG)
+/// Shortcut keyboard (hanya aktif saat di dalam mobil):
+///   M          = Play / Pause
+///   ,  (koma)  = Lagu sebelumnya
+///   .  (titik) = Lagu berikutnya
 /// </summary>
 public class VehicleMusicPlayer : MonoBehaviour
 {
-    // ── Struct data stasiun radio ─────────────────
-    [System.Serializable]
-    public class RadioStation
-    {
-        public string name  = "Radio";
-        public string url   = "";
-        public string genre = "";
-    }
+    [Header("Songs")]
+    [Tooltip("Drag AudioClip MP3/WAV lagu-lagumu ke sini")]
+    public AudioClip[] songs;
 
-    [Header("Radio Stations (Inspector)")]
-    [Tooltip("Isi langsung di Inspector. Dikosongkan jika pakai JSON dari server.")]
-    public RadioStation[] radioStations = new RadioStation[]
-    {
-        new RadioStation { name = "RRI Pro 1 Jakarta",  url = "http://streaming.rri.go.id/pro1-jkt/mp3/256",  genre = "News" },
-        new RadioStation { name = "RRI Pro 2 Jakarta",  url = "http://streaming.rri.go.id/pro2-jkt/mp3/256",  genre = "Music" },
-        new RadioStation { name = "RRI Pro 3 Jakarta",  url = "http://streaming.rri.go.id/pro3-jkt/mp3/256",  genre = "Youth" },
-        new RadioStation { name = "RRI Pro 4 Jakarta",  url = "http://streaming.rri.go.id/pro4-jkt/mp3/256",  genre = "Culture" },
-    };
-
-    [Header("Remote JSON (Opsional)")]
-    [Tooltip("Kosongkan jika tidak pakai. Isi URL JSON untuk update stasiun tanpa rebuild game.")]
-    public string radioJsonUrl = "";
+    [Header("Station Name")]
+    [Tooltip("Nama stasiun yang tampil di UI (ala GTA)")]
+    public string stationName = "SELF RADIO";
 
     [Header("Audio Settings")]
     [Range(0f, 1f)]
     public float volume = 0.7f;
 
     // ── Runtime ──────────────────────────────────
-    private AudioSource  _audioSource;
-    private int          _currentIndex  = 0;
-    private bool         _isPlaying     = false;
-    private bool         _isLoading     = false;
-    private bool         _stationsReady = false;
-    private Coroutine    _streamCoroutine;
-    private List<RadioStation> _stations = new List<RadioStation>();
+    private AudioSource _audioSource;
+    private int         _currentIndex = 0;
+    private bool        _isPlaying    = false;
 
-    // ── UI ───────────────────────────────────────
-    private GameObject _uiPanel;
-    private Text       _stationName;
-    private Text       _stationGenre;
-    private Text       _stationCounter;
-    private Text       _statusLabel;      // "Loading..." / "ON AIR" / "Error"
-    private Button     _btnPrev;
-    private Button     _btnPlayPause;
-    private Button     _btnNext;
-    private Text       _btnPlayPauseLabel;
-    private Image      _onAirBadge;
+    // ── UI Root ──────────────────────────────────
+    private GameObject _uiRoot;
 
-    // ── Singleton per-mobil ───────────────────────
+    // ── UI Elements ──────────────────────────────
+    private Text   _stationLabel;
+    private Text   _songTitleText;
+    private Text   _songCounterText;
+    private Text   _btnPlayLabel;
+    private Image  _playBtnImg;
+    private Image  _progressFill;
+
+    // ── Warna ala GTA 5 ──────────────────────────
+    private static readonly Color ColOrange = new Color(1.00f, 0.55f, 0.00f, 1f);
+    private static readonly Color ColDark   = new Color(0.04f, 0.04f, 0.04f, 0.93f);
+    private static readonly Color ColMid    = new Color(0.12f, 0.12f, 0.12f, 1f);
+    private static readonly Color ColDim    = new Color(0.20f, 0.20f, 0.20f, 1f);
+    private static readonly Color ColLight  = new Color(0.85f, 0.85f, 0.85f, 1f);
+    private static readonly Color ColSubtle = new Color(0.45f, 0.45f, 0.45f, 1f);
+
+    // ── Singleton ────────────────────────────────
     public static VehicleMusicPlayer ActivePlayer { get; private set; }
 
     // ─────────────────────────────────────────────
     void Awake()
     {
         _audioSource             = gameObject.AddComponent<AudioSource>();
-        _audioSource.loop        = true;   // radio = loop / stream terus
-        _audioSource.volume      = PlayerPrefs.GetFloat("audio_vol_music", 0.50f);
+        _audioSource.loop        = false;
+        _audioSource.volume      = PlayerPrefs.GetFloat("audio_vol_music", volume);
         _audioSource.playOnAwake = false;
     }
 
@@ -87,518 +70,353 @@ public class VehicleMusicPlayer : MonoBehaviour
     {
         BuildUI();
         HideMusicUI();
-
-        // Muat stasiun: JSON remote lebih diprioritaskan
-        if (!string.IsNullOrEmpty(radioJsonUrl))
-            StartCoroutine(LoadStationsFromJson(radioJsonUrl));
-        else
-            LoadStationsFromInspector();
     }
 
     void Update()
     {
-        // Shortcut keyboard: M = play/pause radio (hanya saat UI aktif / di dalam mobil)
-        if (Input.GetKeyDown(KeyCode.M) && _uiPanel != null && _uiPanel.activeSelf)
-            TogglePlayPause();
+        if (_uiRoot == null || !_uiRoot.activeSelf) return;
 
-        // Shortcut keyboard: , = prev stasiun, . = next stasiun
-        if (Input.GetKeyDown(KeyCode.Comma) && _uiPanel != null && _uiPanel.activeSelf)
-            PlayPrev();
-        if (Input.GetKeyDown(KeyCode.Period) && _uiPanel != null && _uiPanel.activeSelf)
-            PlayNext();
+        // Shortcut keyboard
+        if (Input.GetKeyDown(KeyCode.M))      TogglePlayPause();
+        if (Input.GetKeyDown(KeyCode.Comma))  PlayPrev();
+        if (Input.GetKeyDown(KeyCode.Period)) PlayNext();
 
-        // Deteksi stream putus (misal koneksi internet terputus)
-        if (_isPlaying && !_isLoading && _audioSource != null && !_audioSource.isPlaying)
-        {
-            Debug.LogWarning("[Radio] Stream putus, mencoba reconnect...");
-            PlayCurrent();
-        }
+        // Auto-next
+        if (_isPlaying && !_audioSource.isPlaying) PlayNext();
+
+        // Progress bar
+        UpdateProgressBar();
     }
 
     // ═════════════════════════════════════════════
-    //  LOAD STATIONS
-    // ═════════════════════════════════════════════
-
-    void LoadStationsFromInspector()
-    {
-        _stations.Clear();
-        if (radioStations != null)
-            _stations.AddRange(radioStations);
-        _stationsReady = true;
-        UpdateUI();
-        Debug.Log("[Radio] " + _stations.Count + " stasiun dimuat dari Inspector.");
-    }
-
-    // Format JSON yang diharapkan:
-    // { "stations": [ {"name":"RRI","url":"http://...","genre":"News"} ] }
-    [System.Serializable]
-    private class StationList { public RadioStation[] stations; }
-
-    IEnumerator LoadStationsFromJson(string jsonUrl)
-    {
-        SetStatusLabel("Memuat stasiun...");
-        using (UnityWebRequest req = UnityWebRequest.Get(jsonUrl))
-        {
-            req.timeout = 10;
-            yield return req.SendWebRequest();
-
-            if (req.result == UnityWebRequest.Result.Success)
-            {
-                try
-                {
-                    StationList parsed = JsonUtility.FromJson<StationList>(req.downloadHandler.text);
-                    if (parsed != null && parsed.stations != null && parsed.stations.Length > 0)
-                    {
-                        _stations.Clear();
-                        _stations.AddRange(parsed.stations);
-                        Debug.Log("[Radio] " + _stations.Count + " stasiun dimuat dari JSON.");
-                    }
-                    else
-                    {
-                        Debug.LogWarning("[Radio] JSON kosong atau format salah, fallback ke Inspector.");
-                        LoadStationsFromInspector();
-                        yield break;
-                    }
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError("[Radio] Parse JSON gagal: " + e.Message);
-                    LoadStationsFromInspector();
-                    yield break;
-                }
-            }
-            else
-            {
-                Debug.LogWarning("[Radio] Gagal load JSON (" + req.error + "), fallback ke Inspector.");
-                LoadStationsFromInspector();
-                yield break;
-            }
-        }
-
-        _stationsReady = true;
-        UpdateUI();
-    }
-
-    // ═════════════════════════════════════════════
-    //  PUBLIC API — dipanggil dari VehicleController
+    //  PUBLIC API
     // ═════════════════════════════════════════════
 
     public void ShowMusicUI()
     {
         ActivePlayer = this;
-        if (_uiPanel != null) _uiPanel.SetActive(true);
-        _audioSource.volume = PlayerPrefs.GetFloat("audio_vol_music", 0.50f);
+        _audioSource.volume = PlayerPrefs.GetFloat("audio_vol_music", volume);
+        if (_uiRoot != null) _uiRoot.SetActive(true);
         UpdateUI();
-        Debug.Log("[Radio] ShowMusicUI. Stasiun tersedia: " + _stations.Count);
     }
 
     public void HideMusicUI()
     {
         if (ActivePlayer == this) ActivePlayer = null;
-        if (_uiPanel != null) _uiPanel.SetActive(false);
-
-        // Stop stream saat keluar mobil
-        StopStream();
+        if (_uiRoot != null) _uiRoot.SetActive(false);
+        if (_audioSource != null && _audioSource.isPlaying)
+        {
+            _audioSource.Stop();
+            _isPlaying = false;
+        }
     }
 
     public void SetMusicVolume(float v)
     {
-        if (_audioSource != null)
-            _audioSource.volume = v;
+        volume = v;
+        if (_audioSource != null) _audioSource.volume = v;
     }
 
-    // ─────────────────────────────────────────────
+    // ═════════════════════════════════════════════
     //  PLAYBACK
-    // ─────────────────────────────────────────────
+    // ═════════════════════════════════════════════
 
     void PlayCurrent()
     {
-        if (!_stationsReady || _stations.Count == 0)
-        {
-            SetStatusLabel("Tidak ada stasiun");
-            return;
-        }
+        if (songs == null || songs.Length == 0) return;
+        if (_currentIndex < 0 || _currentIndex >= songs.Length) _currentIndex = 0;
+        AudioClip clip = songs[_currentIndex];
+        if (clip == null) return;
 
-        if (_streamCoroutine != null)
-            StopCoroutine(_streamCoroutine);
-
-        _streamCoroutine = StartCoroutine(StreamRadio(_currentIndex));
-    }
-
-    IEnumerator StreamRadio(int index)
-    {
-        if (index < 0 || index >= _stations.Count) yield break;
-
-        string streamUrl = _stations[index].url;
-        if (string.IsNullOrEmpty(streamUrl))
-        {
-            SetStatusLabel("URL kosong");
-            yield break;
-        }
-
-        // Stop audio lama
-        if (_audioSource.isPlaying) _audioSource.Stop();
-        _audioSource.clip = null;
-
-        _isLoading = true;
-        _isPlaying = false;
-        SetStatusLabel("Connecting...");
+        _audioSource.clip   = clip;
+        _audioSource.volume = volume;
+        _audioSource.Play();
+        _isPlaying = true;
         UpdateUI();
-
-        Debug.Log("[Radio] Connecting ke: " + streamUrl);
-
-        using (UnityWebRequest req = UnityWebRequestMultimedia.GetAudioClip(streamUrl, AudioType.MPEG))
-        {
-            // streamAudio = true supaya mulai play sebelum full download
-            ((DownloadHandlerAudioClip)req.downloadHandler).streamAudio = true;
-            req.timeout = 15;
-
-            // Beberapa server streaming (streamtheworld, radiojar, dll) blokir
-            // User-Agent default Unity → kasih User-Agent browser supaya tidak 403
-            req.SetRequestHeader("User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/124.0.0.0 Safari/537.36");
-            req.SetRequestHeader("Accept", "*/*");
-            req.SetRequestHeader("Icy-MetaData", "1");
-
-            var op = req.SendWebRequest();
-
-            // Tunggu sampai ada data yang cukup untuk diputar (estimasi 2 detik)
-            float waited = 0f;
-            while (!op.isDone && waited < 15f)
-            {
-                waited += Time.deltaTime;
-
-                // Coba ambil clip partial (streaming)
-                try
-                {
-                    AudioClip partial = DownloadHandlerAudioClip.GetContent(req);
-                    if (partial != null && partial.samples > 0)
-                    {
-                        _audioSource.clip   = partial;
-                        _audioSource.volume = volume;
-                        _audioSource.loop   = true;
-                        _audioSource.Play();
-                        _isPlaying = true;
-                        _isLoading = false;
-                        SetStatusLabel("ON AIR");
-                        UpdateUI();
-                        Debug.Log("[Radio] Streaming: " + _stations[index].name);
-                        yield break;
-                    }
-                }
-                catch { /* belum siap, lanjut tunggu */ }
-
-                yield return null;
-            }
-
-            // Jika selesai download penuh
-            if (req.result == UnityWebRequest.Result.Success)
-            {
-                AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
-                if (clip != null)
-                {
-                    _audioSource.clip   = clip;
-                    _audioSource.volume = volume;
-                    _audioSource.loop   = true;
-                    _audioSource.Play();
-                    _isPlaying = true;
-                    _isLoading = false;
-                    SetStatusLabel("ON AIR");
-                    UpdateUI();
-                    Debug.Log("[Radio] Playing (full): " + _stations[index].name);
-                }
-                else
-                {
-                    HandleStreamError("Clip null");
-                }
-            }
-            else
-            {
-                HandleStreamError(req.error);
-            }
-        }
-    }
-
-    void HandleStreamError(string error)
-    {
-        _isLoading = false;
-        _isPlaying = false;
-        SetStatusLabel("Error - cek koneksi");
-        UpdateUI();
-        Debug.LogWarning("[Radio] Stream error: " + error);
-    }
-
-    void StopStream()
-    {
-        if (_streamCoroutine != null)
-        {
-            StopCoroutine(_streamCoroutine);
-            _streamCoroutine = null;
-        }
-        if (_audioSource != null && _audioSource.isPlaying)
-            _audioSource.Stop();
-        _isPlaying = false;
-        _isLoading = false;
-        UpdateUI();
+        StartCoroutine(FlashTitle());
     }
 
     void TogglePlayPause()
     {
-        if (_stations.Count == 0) return;
-
-        if (_isLoading) return; // jangan interrupt saat loading
-
+        if (songs == null || songs.Length == 0) return;
         if (_isPlaying && _audioSource.isPlaying)
         {
             _audioSource.Pause();
             _isPlaying = false;
-            SetStatusLabel("Paused");
         }
-        else if (!_isPlaying && _audioSource.clip != null)
+        else if (_isPlaying && !_audioSource.isPlaying)
         {
             _audioSource.UnPause();
             _isPlaying = true;
-            SetStatusLabel("ON AIR");
         }
         else
         {
             PlayCurrent();
+            return;
         }
         UpdateUI();
     }
 
     void PlayNext()
     {
-        if (_stations.Count == 0) return;
-        _currentIndex = (_currentIndex + 1) % _stations.Count;
+        if (songs == null || songs.Length == 0) return;
+        _currentIndex = (_currentIndex + 1) % songs.Length;
         PlayCurrent();
     }
 
     void PlayPrev()
     {
-        if (_stations.Count == 0) return;
-        _currentIndex = (_currentIndex - 1 + _stations.Count) % _stations.Count;
+        if (songs == null || songs.Length == 0) return;
+        _currentIndex = (_currentIndex - 1 + songs.Length) % songs.Length;
         PlayCurrent();
     }
 
-    // ─────────────────────────────────────────────
+    // ═════════════════════════════════════════════
     //  UI UPDATE
-    // ─────────────────────────────────────────────
+    // ═════════════════════════════════════════════
 
     void UpdateUI()
     {
-        if (_stations.Count == 0)
+        bool hasSongs = songs != null && songs.Length > 0;
+
+        if (_songCounterText != null)
+            _songCounterText.text = hasSongs
+                ? $"{_currentIndex + 1:D2} / {songs.Length:D2}"
+                : "00 / 00";
+
+        if (_songTitleText != null)
         {
-            if (_stationName    != null) _stationName.text    = "Tidak ada stasiun";
-            if (_stationGenre   != null) _stationGenre.text   = "";
-            if (_stationCounter != null) _stationCounter.text = "0/0";
-            if (_btnPlayPauseLabel != null) _btnPlayPauseLabel.text = "▶";
-            return;
+            if (hasSongs && songs[_currentIndex] != null)
+            {
+                string raw = songs[_currentIndex].name;
+                _songTitleText.text = raw.Length > 26 ? raw.Substring(0, 24) + "…" : raw;
+            }
+            else
+            {
+                _songTitleText.text = "NO TRACK LOADED";
+            }
         }
 
-        RadioStation st = _stations[_currentIndex];
-        if (_stationName    != null) _stationName.text    = st.name;
-        if (_stationGenre   != null) _stationGenre.text   = st.genre;
-        if (_stationCounter != null) _stationCounter.text = $"{_currentIndex + 1}/{_stations.Count}";
-
-        if (_btnPlayPauseLabel != null)
-        {
-            if (_isLoading)        _btnPlayPauseLabel.text = "...";
-            else if (_isPlaying)   _btnPlayPauseLabel.text = "❚❚";
-            else                   _btnPlayPauseLabel.text = "▶";
-        }
-
-        // Badge ON AIR
-        if (_onAirBadge != null)
-            _onAirBadge.gameObject.SetActive(_isPlaying && !_isLoading);
+        bool playing = _isPlaying && _audioSource.isPlaying;
+        if (_btnPlayLabel != null)
+            _btnPlayLabel.text = playing ? "❚❚" : "▶";
+        if (_playBtnImg != null)
+            _playBtnImg.color = playing ? ColOrange : ColDim;
     }
 
-    void SetStatusLabel(string msg)
+    void UpdateProgressBar()
     {
-        if (_statusLabel != null) _statusLabel.text = msg;
+        if (_progressFill == null || _audioSource?.clip == null) return;
+        float t = _audioSource.clip.length > 0
+            ? _audioSource.time / _audioSource.clip.length : 0f;
+        _progressFill.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(t), 1f);
+    }
+
+    IEnumerator FlashTitle()
+    {
+        if (_songTitleText == null) yield break;
+        Color orig = _songTitleText.color;
+        _songTitleText.color = ColOrange;
+        yield return new WaitForSeconds(0.15f);
+        _songTitleText.color = orig;
     }
 
     // ═════════════════════════════════════════════
-    //  BUILD UI
+    //  BUILD UI — GTA 5 Style
+    //  Posisi: pojok kiri bawah (persis GTA 5)
+    //  Ukuran: 360 x 112 px
     // ═════════════════════════════════════════════
 
     void BuildUI()
     {
-        Canvas canvas = FindFirstObjectByType<Canvas>();
-        if (canvas == null)
+        // ── Ambil canvas & panelRT langsung dari MinimapSystem ──────────
+        // Dengan pakai canvas yang SAMA, satuan pixel identik di resolusi apapun.
+        Canvas canvas      = null;
+        RectTransform mmRT = null;
+
+        if (MinimapSystem.Instance != null && MinimapSystem.Instance.UICanvas != null)
         {
-            var cgo = new GameObject("RadioCanvas");
-            canvas = cgo.AddComponent<Canvas>();
+            canvas = MinimapSystem.Instance.UICanvas;
+            mmRT   = MinimapSystem.Instance.PanelRT;
+        }
+        else
+        {
+            // Fallback: buat canvas sendiri jika MinimapSystem belum ada
+            var cgo = new GameObject("MusicCanvas");
+            canvas  = cgo.AddComponent<Canvas>();
             canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 50;
-            cgo.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            var scaler = cgo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
             cgo.AddComponent<GraphicRaycaster>();
         }
 
-        // ── Panel utama ───────────────────────────
-        _uiPanel = new GameObject("RadioPlayerPanel");
-        _uiPanel.transform.SetParent(canvas.transform, false);
 
-        RectTransform panelRT    = _uiPanel.AddComponent<RectTransform>();
-        panelRT.anchorMin        = new Vector2(1f, 1f);
-        panelRT.anchorMax        = new Vector2(1f, 1f);
-        panelRT.pivot            = new Vector2(1f, 1f);
-        panelRT.anchoredPosition = new Vector2(-130f, -10f);
-        panelRT.sizeDelta        = new Vector2(290f, 105f);
+        // ── Root ──────────────────────────────────
+        // ── Root — posisi tepat di kanan minimap ─────────────────────
+        _uiRoot = new GameObject("MusicPlayerGTA");
+        _uiRoot.transform.SetParent(canvas.transform, false);
+        RectTransform rootRT = _uiRoot.AddComponent<RectTransform>();
+        rootRT.anchorMin = new Vector2(0f, 1f);
+        rootRT.anchorMax = new Vector2(0f, 1f);
+        rootRT.pivot     = new Vector2(0f, 1f);
+        rootRT.sizeDelta = new Vector2(360f, 112f);
 
-        Image panelBG = _uiPanel.AddComponent<Image>();
-        panelBG.color = new Color(0.05f, 0.05f, 0.1f, 0.88f);
+        if (mmRT != null)
+        {
+            // X = ujung kanan minimap + 8px gap
+            // Y = posisi atas minimap (sudah negatif dari anchor atas)
+            float mmRight = mmRT.anchoredPosition.x + mmRT.sizeDelta.x;
+            float mmTop   = mmRT.anchoredPosition.y;
+            rootRT.anchoredPosition = new Vector2(mmRight + 8f, mmTop);
+        }
+        else
+        {
+            rootRT.anchoredPosition = new Vector2(178f, -20f); // fallback
+        }
 
-        // ── Nama stasiun ──────────────────────────
-        GameObject nameGO    = new GameObject("StationName");
-        nameGO.transform.SetParent(_uiPanel.transform, false);
-        RectTransform nameRT = nameGO.AddComponent<RectTransform>();
-        nameRT.anchorMin     = new Vector2(0f, 0.65f);
-        nameRT.anchorMax     = new Vector2(1f, 1f);
-        nameRT.offsetMin     = new Vector2(10f, 0f);
-        nameRT.offsetMax     = new Vector2(-10f, 0f);
-        _stationName           = nameGO.AddComponent<Text>();
-        _stationName.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        _stationName.fontSize  = 18;
-        _stationName.fontStyle = FontStyle.Bold;
-        _stationName.color     = Color.white;
-        _stationName.alignment = TextAnchor.MiddleCenter;
-        _stationName.text      = _stations.Count > 0 ? _stations[0].name : "Memuat...";
+        _uiRoot.AddComponent<Image>().color = ColDark;
 
-        // ── Genre + Counter ───────────────────────
-        GameObject infoGO    = new GameObject("InfoRow");
-        infoGO.transform.SetParent(_uiPanel.transform, false);
-        RectTransform infoRT = infoGO.AddComponent<RectTransform>();
-        infoRT.anchorMin     = new Vector2(0f, 0.44f);
-        infoRT.anchorMax     = new Vector2(1f, 0.66f);
-        infoRT.offsetMin     = new Vector2(10f, 0f);
-        infoRT.offsetMax     = new Vector2(-10f, 0f);
+        // ── Accent bar oranye kiri ─────────────────
+        var accent = Child(_uiRoot.transform, "Accent");
+        Rt(accent, new Vector2(0,0), new Vector2(0,1), Vector2.zero, new Vector2(5,0));
+        accent.AddComponent<Image>().color = ColOrange;
 
-        // Genre (kiri)
-        GameObject genreGO    = new GameObject("Genre");
-        genreGO.transform.SetParent(infoGO.transform, false);
-        RectTransform genreRT = genreGO.AddComponent<RectTransform>();
-        genreRT.anchorMin     = new Vector2(0f, 0f);
-        genreRT.anchorMax     = new Vector2(0.5f, 1f);
-        genreRT.offsetMin     = genreRT.offsetMax = Vector2.zero;
-        _stationGenre           = genreGO.AddComponent<Text>();
-        _stationGenre.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        _stationGenre.fontSize  = 12;
-        _stationGenre.color     = new Color(0.4f, 0.8f, 1f, 1f);
-        _stationGenre.alignment = TextAnchor.MiddleLeft;
+        // ── Album art kotak ───────────────────────
+        var art = Child(_uiRoot.transform, "Art");
+        Rt(art, new Vector2(0,0), new Vector2(0,1), new Vector2(5,6), new Vector2(105,-6));
+        art.AddComponent<Image>().color = ColMid;
 
-        // Counter (kanan)
-        GameObject counterGO    = new GameObject("Counter");
-        counterGO.transform.SetParent(infoGO.transform, false);
-        RectTransform counterRT = counterGO.AddComponent<RectTransform>();
-        counterRT.anchorMin     = new Vector2(0.5f, 0f);
-        counterRT.anchorMax     = new Vector2(1f, 1f);
-        counterRT.offsetMin     = counterRT.offsetMax = Vector2.zero;
-        _stationCounter           = counterGO.AddComponent<Text>();
-        _stationCounter.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        _stationCounter.fontSize  = 12;
-        _stationCounter.color     = new Color(0.6f, 0.6f, 0.6f, 1f);
-        _stationCounter.alignment = TextAnchor.MiddleRight;
-        _stationCounter.text      = "0/0";
+        // ♫ di tengah art
+        var note = Child(art.transform, "Note");
+        Rt(note, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        var noteTxt = note.AddComponent<Text>();
+        noteTxt.text = "♫"; noteTxt.font = Fnt(); noteTxt.fontSize = 38;
+        noteTxt.color = ColOrange; noteTxt.alignment = TextAnchor.MiddleCenter;
+        noteTxt.raycastTarget = false;
 
-        // ── Status label (Connecting / ON AIR / Error) ──
-        GameObject statusGO    = new GameObject("StatusLabel");
-        statusGO.transform.SetParent(_uiPanel.transform, false);
-        RectTransform statusRT = statusGO.AddComponent<RectTransform>();
-        statusRT.anchorMin     = new Vector2(0f, 0.28f);
-        statusRT.anchorMax     = new Vector2(1f, 0.46f);
-        statusRT.offsetMin     = new Vector2(10f, 0f);
-        statusRT.offsetMax     = new Vector2(-10f, 0f);
-        _statusLabel           = statusGO.AddComponent<Text>();
-        _statusLabel.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        _statusLabel.fontSize  = 11;
-        _statusLabel.color     = new Color(0.9f, 0.7f, 0.2f, 1f);
-        _statusLabel.alignment = TextAnchor.MiddleCenter;
-        _statusLabel.text      = "Tekan ▶ untuk mulai";
+        // ── Info area (kanan art) ──────────────────
+        var info = Child(_uiRoot.transform, "Info");
+        Rt(info, new Vector2(0,0), new Vector2(1,1), new Vector2(110,0), new Vector2(-8,0));
+        info.AddComponent<Image>().color = new Color(0,0,0,0);
 
-        // ── ON AIR badge ──────────────────────────
-        GameObject badgeGO    = new GameObject("OnAirBadge");
-        badgeGO.transform.SetParent(_uiPanel.transform, false);
-        RectTransform badgeRT = badgeGO.AddComponent<RectTransform>();
-        badgeRT.anchorMin     = new Vector2(0f, 0.65f);
-        badgeRT.anchorMax     = new Vector2(0f, 1f);
-        badgeRT.pivot         = new Vector2(0f, 0.5f);
-        badgeRT.anchoredPosition = new Vector2(8f, 0f);
-        badgeRT.sizeDelta     = new Vector2(46f, 16f);
-        _onAirBadge           = badgeGO.AddComponent<Image>();
-        _onAirBadge.color     = new Color(0.9f, 0.1f, 0.1f, 0.9f);
-        badgeGO.SetActive(false);
+        // Station label — oranye kecil di atas
+        _stationLabel = Txt(info.transform, "Station", stationName,
+            new Vector2(0, 0.78f), new Vector2(0.65f, 1f),
+            9, ColOrange, FontStyle.Bold, TextAnchor.MiddleLeft);
 
-        GameObject badgeTxtGO = new GameObject("BadgeText");
-        badgeTxtGO.transform.SetParent(badgeGO.transform, false);
-        RectTransform btRT    = badgeTxtGO.AddComponent<RectTransform>();
-        btRT.anchorMin        = Vector2.zero;
-        btRT.anchorMax        = Vector2.one;
-        Text btTxt            = badgeTxtGO.AddComponent<Text>();
-        btTxt.text            = "● ON AIR";
-        btTxt.font            = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        btTxt.fontSize        = 9;
-        btTxt.fontStyle       = FontStyle.Bold;
-        btTxt.color           = Color.white;
-        btTxt.alignment       = TextAnchor.MiddleCenter;
-        btTxt.raycastTarget   = false;
+        // Counter — kanan atas
+        _songCounterText = Txt(info.transform, "Counter", "00 / 00",
+            new Vector2(0.6f, 0.78f), new Vector2(1f, 1f),
+            9, ColSubtle, FontStyle.Normal, TextAnchor.MiddleRight);
+
+        // Garis tipis bawah header
+        var sep1 = Child(info.transform, "Sep1");
+        Rt(sep1, new Vector2(0, 0.77f), new Vector2(1, 0.78f), Vector2.zero, Vector2.zero);
+        sep1.AddComponent<Image>().color = new Color(0.25f,0.25f,0.25f,1f);
+
+        // Judul lagu — putih besar
+        _songTitleText = Txt(info.transform, "Title",
+            songs != null && songs.Length > 0 && songs[0] != null ? songs[0].name : "NO TRACK",
+            new Vector2(0, 0.36f), new Vector2(1, 0.78f),
+            15, Color.white, FontStyle.Bold, TextAnchor.MiddleLeft);
+
+        // Progress bar background
+        var progBg = Child(info.transform, "ProgBg");
+        Rt(progBg, new Vector2(0, 0.28f), new Vector2(1, 0.36f), Vector2.zero, Vector2.zero);
+        progBg.AddComponent<Image>().color = new Color(0.18f, 0.18f, 0.18f, 1f);
+
+        // Progress bar fill (oranye, width = 0 awal)
+        var progFill = Child(progBg.transform, "ProgFill");
+        RectTransform pfRT = progFill.AddComponent<RectTransform>();
+        pfRT.anchorMin = new Vector2(0f, 0f);
+        pfRT.anchorMax = new Vector2(0f, 1f);
+        pfRT.offsetMin = pfRT.offsetMax = Vector2.zero;
+        _progressFill  = progFill.AddComponent<Image>();
+        _progressFill.color = ColOrange;
+
+        // Garis tipis atas tombol
+        var sep2 = Child(info.transform, "Sep2");
+        Rt(sep2, new Vector2(0, 0.275f), new Vector2(1, 0.285f), Vector2.zero, Vector2.zero);
+        sep2.AddComponent<Image>().color = new Color(0.25f,0.25f,0.25f,1f);
 
         // ── Row tombol ────────────────────────────
-        GameObject prevGO = MakeControlButton(_uiPanel.transform, "◀◀", new Vector2(-82f, -8f));
-        prevGO.GetComponent<Button>().onClick.AddListener(PlayPrev);
+        // PREV ◀
+        var prev = MakeBtn(info.transform, "◀", new Vector2(0f,0f), new Vector2(0.28f,0.28f), 12, false);
+        prev.GetComponent<Button>().onClick.AddListener(PlayPrev);
 
-        GameObject ppGO = MakeControlButton(_uiPanel.transform, "▶", new Vector2(0f, -8f), large: true);
-        _btnPlayPause       = ppGO.GetComponent<Button>();
-        _btnPlayPauseLabel  = ppGO.GetComponentInChildren<Text>();
-        _btnPlayPause.onClick.AddListener(TogglePlayPause);
+        // PLAY ▶ — oranye, tengah
+        var play = MakeBtn(info.transform, "▶", new Vector2(0.28f,0f), new Vector2(0.72f,0.28f), 14, true);
+        _playBtnImg   = play.GetComponent<Image>();
+        _btnPlayLabel = play.GetComponentInChildren<Text>();
+        play.GetComponent<Button>().onClick.AddListener(TogglePlayPause);
 
-        GameObject nextGO = MakeControlButton(_uiPanel.transform, "▶▶", new Vector2(82f, -8f));
-        nextGO.GetComponent<Button>().onClick.AddListener(PlayNext);
+        // NEXT ▶▶
+        var next = MakeBtn(info.transform, "▶▶", new Vector2(0.72f,0f), new Vector2(1f,0.28f), 12, false);
+        next.GetComponent<Button>().onClick.AddListener(PlayNext);
     }
 
-    GameObject MakeControlButton(Transform parent, string label, Vector2 pos, bool large = false)
+    // ─────────────────────────────────────────────
+    //  HELPERS
+    // ─────────────────────────────────────────────
+
+    GameObject Child(Transform parent, string name)
     {
-        float size = large ? 52f : 40f;
-
-        GameObject go = new GameObject("Btn_" + label);
+        var go = new GameObject(name);
         go.transform.SetParent(parent, false);
-
-        RectTransform rt    = go.AddComponent<RectTransform>();
-        rt.anchorMin        = new Vector2(0.5f, 0f);
-        rt.anchorMax        = new Vector2(0.5f, 0f);
-        rt.pivot            = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = pos;
-        rt.sizeDelta        = new Vector2(size, size);
-
-        Image img = go.AddComponent<Image>();
-        img.color = large
-            ? new Color(0.15f, 0.6f, 1f, 0.9f)
-            : new Color(0.2f, 0.2f, 0.3f, 0.9f);
-
-        Button btn  = go.AddComponent<Button>();
-        var colors  = btn.colors;
-        colors.highlightedColor = new Color(1f, 1f, 1f, 0.3f);
-        colors.pressedColor     = new Color(0f, 0f, 0f, 0.5f);
-        btn.colors = colors;
-
-        GameObject textGO    = new GameObject("Label");
-        textGO.transform.SetParent(go.transform, false);
-        RectTransform textRT = textGO.AddComponent<RectTransform>();
-        textRT.anchorMin     = Vector2.zero;
-        textRT.anchorMax     = Vector2.one;
-        textRT.offsetMin     = textRT.offsetMax = Vector2.zero;
-
-        Text txt          = textGO.AddComponent<Text>();
-        txt.text          = label;
-        txt.font          = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        txt.fontSize      = large ? 22 : 16;
-        txt.fontStyle     = FontStyle.Bold;
-        txt.color         = Color.white;
-        txt.alignment     = TextAnchor.MiddleCenter;
-        txt.raycastTarget = false;
-
         return go;
     }
+
+    void Rt(GameObject go, Vector2 ancMin, Vector2 ancMax, Vector2 offMin, Vector2 offMax)
+    {
+        RectTransform rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = ancMin; rt.anchorMax = ancMax;
+        rt.offsetMin = offMin; rt.offsetMax = offMax;
+    }
+
+    Text Txt(Transform parent, string name, string text,
+        Vector2 ancMin, Vector2 ancMax,
+        int size, Color color, FontStyle style, TextAnchor align)
+    {
+        var go = Child(parent, name);
+        RectTransform rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = ancMin; rt.anchorMax = ancMax;
+        rt.offsetMin = new Vector2(2,0); rt.offsetMax = new Vector2(-2,0);
+        Text t = go.AddComponent<Text>();
+        t.text = text; t.font = Fnt(); t.fontSize = size;
+        t.fontStyle = style; t.color = color;
+        t.alignment = align; t.raycastTarget = false;
+        return t;
+    }
+
+    GameObject MakeBtn(Transform parent, string label,
+        Vector2 ancMin, Vector2 ancMax, int fontSize, bool primary)
+    {
+        var go = Child(parent, "Btn_" + label);
+        RectTransform rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = ancMin; rt.anchorMax = ancMax;
+        rt.offsetMin = new Vector2(2,2); rt.offsetMax = new Vector2(-2,-2);
+
+        Image img   = go.AddComponent<Image>();
+        img.color   = primary ? ColOrange : ColDim;
+
+        Button btn  = go.AddComponent<Button>();
+        var c       = btn.colors;
+        c.highlightedColor = primary ? new Color(1f,0.7f,0.1f,1f) : new Color(0.3f,0.3f,0.3f,1f);
+        c.pressedColor     = new Color(0.05f,0.05f,0.05f,1f);
+        btn.colors  = c;
+
+        var lGo = Child(go.transform, "L");
+        RectTransform lrt = lGo.AddComponent<RectTransform>();
+        lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
+        lrt.offsetMin = lrt.offsetMax = Vector2.zero;
+        Text t = lGo.AddComponent<Text>();
+        t.text = label; t.font = Fnt(); t.fontSize = fontSize;
+        t.fontStyle = FontStyle.Bold;
+        t.color = primary ? Color.black : ColLight;
+        t.alignment = TextAnchor.MiddleCenter; t.raycastTarget = false;
+        return go;
+    }
+
+    Font Fnt() => Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 }

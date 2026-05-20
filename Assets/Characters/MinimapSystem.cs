@@ -33,6 +33,10 @@ public class MinimapSystem : MonoBehaviour
              "Naikkan kalau atap lantai atas masih keliatan di minimap.")]
     public float clipAbovePlayer = 1.5f;
 
+    // Public API — dipakai VehicleMusicPlayer agar tidak nimpa
+    public RectTransform PanelRT  { get; private set; }
+    public Canvas        UICanvas { get; private set; }
+
     // Private
     private Camera        _minimapCam;
     private RenderTexture _renderTex;
@@ -166,6 +170,10 @@ public class MinimapSystem : MonoBehaviour
         panelRT.pivot            = new Vector2(0f, 1f);
         panelRT.anchoredPosition = new Vector2(screenOffset.x, -screenOffset.y);
         panelRT.sizeDelta        = new Vector2(mapSize, mapSize);
+
+        // Expose ke VehicleMusicPlayer
+        PanelRT  = panelRT;
+        UICanvas = _canvas;
 
         // ── Background gelap bulat ────────────────
         Image bgImg   = _panelGO.AddComponent<Image>();

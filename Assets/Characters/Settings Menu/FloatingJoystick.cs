@@ -709,9 +709,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_camController != null)
         {
             Debug.Log("[FloatingJoystick] CameraController ditemukan!");
-            // Sync label tombol dengan state kamera yang sebenarnya
-            if (_viewModeLabel != null)
-                _viewModeLabel.text = _camController.isFirstPerson ? "FPP" : "TPP";
+            SyncViewLabel();
         }
         else
             Debug.LogWarning("[FloatingJoystick] CameraController tidak ditemukan!");
@@ -722,8 +720,9 @@ public class FloatingJoystick : MonoBehaviour
         if (_camController == null)
             _camController = FindFirstObjectByType<CameraController>();
         if (_camController == null) return;
-
-        _camController.isFirstPerson = !_camController.isFirstPerson;
+    
+        // Cycle: TPP → Shoulder → FPP → TPP
+        _camController.CycleMode();
         SyncViewLabel();
     }
 
@@ -731,8 +730,14 @@ public class FloatingJoystick : MonoBehaviour
     public void SyncViewLabel()
     {
         if (_camController == null) return;
-        if (_viewModeLabel != null)
-            _viewModeLabel.text = _camController.isFirstPerson ? "FPP" : "TPP";
+        if (_viewModeLabel == null) return;
+    
+        _viewModeLabel.text = _camController.cameraMode switch
+        {
+            CameraController.CameraMode.FPP      => "FPP",
+            CameraController.CameraMode.Shoulder => "SHLD",
+            _                                     => "TPP"
+        };
     }
 
     // ═════════════════════════════════════════════
@@ -822,7 +827,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_selectedRT == _rtJoystick)   return "Joystick";
         if (_selectedRT == _rtSprint)     return "RUN";
         if (_selectedRT == _rtInteract)   return "INTERACT";
-        if (_selectedRT == _rtViewToggle) return "TPP";
+        if (_selectedRT == _rtViewToggle) return "VIEW";   // diubah dari "TPP"
         if (_selectedRT == _rtPhone)      return "PHONE";
         return null;
     }

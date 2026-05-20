@@ -165,12 +165,22 @@ public class PlayerMovement : MonoBehaviourPun
             else return;
         }
 
-        Vector3 cameraForward = cameraTransform.forward;
-        Vector3 cameraRight   = cameraTransform.right;
-        cameraForward.y = 0f;
-        cameraRight.y   = 0f;
-        cameraForward.Normalize();
-        cameraRight.Normalize();
+        // Pakai MovementForward/Right dari CameraController (yaw murni tanpa shoulder offset)
+        // agar karakter tidak miring di Shoulder mode.
+        // Fallback ke cameraTransform jika CameraController tidak ada.
+        Vector3 cameraForward, cameraRight;
+        if (cameraController != null)
+        {
+            cameraForward = cameraController.MovementForward;
+            cameraRight   = cameraController.MovementRight;
+        }
+        else
+        {
+            cameraForward = cameraTransform.forward;
+            cameraRight   = cameraTransform.right;
+            cameraForward.y = 0f; cameraForward.Normalize();
+            cameraRight.y   = 0f; cameraRight.Normalize();
+        }
 
         Vector3 moveDirection;
 

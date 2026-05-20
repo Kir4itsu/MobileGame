@@ -92,16 +92,29 @@ public class PhoneUIBuilder : MonoBehaviour
     Canvas FindOrCreateCanvas()
     {
         Canvas c = FindFirstObjectByType<Canvas>();
-        if (c != null) return c;
+
+        if (c != null)
+        {
+            // FIX: Patch CanvasScaler yang sudah ada di scene → landscape reference + match height
+            var existingCs = c.GetComponent<CanvasScaler>();
+            if (existingCs != null)
+            {
+                existingCs.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                existingCs.referenceResolution = new Vector2(1920f, 1080f);
+                existingCs.matchWidthOrHeight  = 1f;
+                Debug.Log("[PhoneUIBuilder] CanvasScaler di-patch ke 1920x1080 matchHeight=1");
+            }
+            return c;
+        }
 
         var go     = new GameObject("MainCanvas");
         c          = go.AddComponent<Canvas>();
         c.renderMode   = RenderMode.ScreenSpaceOverlay;
         c.sortingOrder = 100;
         var cs     = go.AddComponent<CanvasScaler>();
-        cs.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        cs.referenceResolution = new Vector2(1080, 1920);
-        cs.matchWidthOrHeight   = 0.5f;
+        cs.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        cs.referenceResolution = new Vector2(1920f, 1080f);
+        cs.matchWidthOrHeight  = 1f;
         go.AddComponent<GraphicRaycaster>();
         return c;
     }
@@ -165,12 +178,23 @@ public class PhoneUIBuilder : MonoBehaviour
         _phoneUI = new GameObject("PhoneUI");
         _phoneUI.transform.SetParent(_canvas.transform, false);
 
+        // FIX: Ukuran HP proporsional terhadap tinggi layar referensi (1080px).
+        // Dengan matchWidthOrHeight=1 (match height) pada CanvasScaler referensi 1920x1080,
+        // semua nilai di bawah akan di-scale otomatis sesuai tinggi layar aktual.
+        // phoneHeight = 85% dari ref height (918px di 1080p) — cukup untuk isi konten
+        // phoneWidth  = 48% dari ref height supaya tampak seperti HP portrait di layar landscape
+        float refH          = 1080f;
+        float phoneHeight   = refH * 0.85f;          // 918px @ 1080p ref
+        float phoneWidth    = refH * 0.48f;          // 518px @ 1080p ref (rasio ~9:16.5)
+        float marginRight   = refH * 0.05f;          // 54px dari kanan
+        float marginBottom  = refH * 0.05f;          // 54px dari bawah
+
         var rt = _phoneUI.AddComponent<RectTransform>();
         rt.anchorMin        = new Vector2(1f, 0f);
         rt.anchorMax        = new Vector2(1f, 0f);
         rt.pivot            = new Vector2(1f, 0f);
-        rt.anchoredPosition = new Vector2(-160f, 80f);  // turun dari 160 ke 80
-        rt.sizeDelta        = new Vector2(480f, 780f);  // lebih besar dari 360x600
+        rt.anchoredPosition = new Vector2(-marginRight, marginBottom);
+        rt.sizeDelta        = new Vector2(phoneWidth, phoneHeight);
 
         // Bodi HP (hitam dengan border abu-abu)
         var body = new GameObject("PhoneBody");

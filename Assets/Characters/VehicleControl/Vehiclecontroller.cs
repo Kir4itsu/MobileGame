@@ -34,12 +34,10 @@ public class VehicleController : MonoBehaviour
 
     // Runtime
     private VehicleMusicPlayer musicPlayer;
-    private float            currentSpeed       = 0f;
-    private bool             isDriven           = false;
+    private float            currentSpeed   = 0f;
+    private bool             isDriven       = false;
     private Transform        driverTransform;
-    private Transform        originalCamTarget;
     private CameraController camController;
-    private float            originalCamScale   = 1f; // simpan characterScale kamera
 
     void Awake()
     {
@@ -70,21 +68,13 @@ public class VehicleController : MonoBehaviour
 
         SetPlayerVisible(player, false);
 
-        // Arahkan kamera ke CameraTarget (di atas atap mobil)
+        // Aktifkan Vehicle Camera Mode
         camController = Camera.main?.GetComponent<CameraController>();
         if (camController != null)
-        {
-            originalCamTarget = camController.target;
-
-            // Simpan & reset characterScale supaya offset kamera tidak kegedean
-            originalCamScale            = camController.autoScaleWithCharacter
-                                          ? Mathf.Max(player.localScale.x, player.localScale.y, player.localScale.z)
-                                          : 1f;
-            camController.autoScaleWithCharacter = false;
-
-            // Pakai cameraTarget kalau ada, fallback ke transform mobil
-            camController.target = cameraTarget != null ? cameraTarget : this.transform;
-        }
+            camController.EnterVehicleMode(
+                vehicleCamTarget: cameraTarget != null ? cameraTarget : this.transform,
+                vehicleRoot:      this.transform
+            );
 
         if (driveUIPanel != null)
             driveUIPanel.SetActive(true);
@@ -110,12 +100,9 @@ public class VehicleController : MonoBehaviour
 
         SetPlayerVisible(player, true);
 
-        // Kembalikan kamera ke player + kembalikan autoScale
-        if (camController != null && originalCamTarget != null)
-        {
-            camController.target                 = originalCamTarget;
-            camController.autoScaleWithCharacter = true;
-        }
+        // Kembalikan kamera ke mode sebelum berkendara
+        if (camController != null)
+            camController.ExitVehicleMode(player);
 
         if (driveUIPanel != null)
             driveUIPanel.SetActive(false);

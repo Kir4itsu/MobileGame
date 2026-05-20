@@ -843,6 +843,18 @@ public class SettingsMenu : MonoBehaviour
 
         // ── Tombol kategori kiri ─────────────────
         float catH = 64f;
+        Color sepColor = new Color(1f, 1f, 1f, 0.18f);
+
+        // Garis paling atas (di atas item Kontrol)
+        GameObject sepTop = MakeRect("Sep_Top", leftContent.transform);
+        RectTransform sepTopRT = sepTop.GetComponent<RectTransform>();
+        sepTopRT.anchorMin        = new Vector2(0f, 1f);
+        sepTopRT.anchorMax        = new Vector2(1f, 1f);
+        sepTopRT.pivot            = new Vector2(0.5f, 1f);
+        sepTopRT.anchoredPosition = Vector2.zero;
+        sepTopRT.sizeDelta        = new Vector2(0f, 1f);
+        sepTop.AddComponent<Image>().color = sepColor;
+
         for (int i = 0; i < categories.Length; i++)
         {
             int idx = i;
@@ -882,15 +894,16 @@ public class SettingsMenu : MonoBehaviour
             btn.onClick.AddListener(() => SwitchCategory(idx));
             _catButtons.Add(btn);
 
-            // Separator bawah
-            GameObject sep = MakeRect("Sep", catGO.transform);
+            // Separator bawah — child dari leftContent (bukan catGO)
+            // agar tidak tertimpa background aktif kategori
+            GameObject sep = MakeRect("Sep_" + i, leftContent.transform);
             RectTransform sepRT = sep.GetComponent<RectTransform>();
-            sepRT.anchorMin        = new Vector2(0.03f, 0f);
-            sepRT.anchorMax        = new Vector2(0.97f, 0f);
-            sepRT.pivot            = new Vector2(0.5f, 0f);
-            sepRT.anchoredPosition = Vector2.zero;
+            sepRT.anchorMin        = new Vector2(0f, 1f);
+            sepRT.anchorMax        = new Vector2(1f, 1f);
+            sepRT.pivot            = new Vector2(0.5f, 1f);
+            sepRT.anchoredPosition = new Vector2(0f, -((i + 1) * catH));
             sepRT.sizeDelta        = new Vector2(0f, 1f);
-            sep.AddComponent<Image>().color = _separator;
+            sep.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.18f);
         }
 
         SwitchCategory(0);
