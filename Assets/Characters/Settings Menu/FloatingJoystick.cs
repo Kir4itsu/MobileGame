@@ -982,6 +982,29 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtPhone      != null) _rtPhone.gameObject.SetActive(true);
     }
 
+    /// <summary>
+    /// Dipanggil saat Radio Wheel dibuka.
+    /// Joystick tetap tampil agar player bisa gerak, tapi Phone / TPP / Keluar / Run disembunyikan.
+    /// </summary>
+    public void HideForRadio()
+    {
+        if (_rtSprint     != null) _rtSprint.gameObject.SetActive(false);   // RUN
+        if (_rtInteract   != null) _rtInteract.gameObject.SetActive(false); // KELUAR
+        if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(false); // TPP/FPP
+        if (_rtPhone      != null) _rtPhone.gameObject.SetActive(false);    // PHONE
+    }
+
+    /// <summary>
+    /// Dipanggil saat Radio Wheel ditutup — kembalikan tombol yang disembunyikan HideForRadio.
+    /// </summary>
+    public void ShowFromRadio()
+    {
+        if (_rtSprint     != null) _rtSprint.gameObject.SetActive(true);
+        if (_rtInteract   != null) _rtInteract.gameObject.SetActive(true);
+        if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(true);
+        if (_rtPhone      != null) _rtPhone.gameObject.SetActive(true);
+    }
+
     // ═════════════════════════════════════════════
     //  BUTTON FACTORY
     // ═════════════════════════════════════════════
