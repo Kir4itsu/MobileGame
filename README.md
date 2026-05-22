@@ -15,6 +15,16 @@ The browser version is currently no longer supported due to increasing game size
 
 Future development will mainly focus on the Android version to ensure better stability, performance, and feature support.
 
+[![Development Preview](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Development%20Preview&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu/MobileGame)
+
+This section showcases early previews of the new map area currently being developed in Blender.
+
+> **Work in Progress:** The environment, vegetation, and structures shown below are still under active development and may change in future updates.
+
+<p align="center">
+  <img width="1919" height="1031" alt="Screenshot 2026-05-21 212328" src="https://github.com/user-attachments/assets/6b031f7e-3e85-4484-90ac-8717752ea05f" />
+</p>
+
 [![Notes](https://capsule-render.vercel.app/api?type=rect&color=0:C724B1,100:00d4ff&height=40&text=◈%20Notes&fontSize=18&fontColor=ffffff&fontAlignY=65)](https://github.com/Kir4itsu/MobileGame)
 
 If you encounter technical issues, bugs, or any problems related to this project, please contact me through the contact information provided on my [![GitHub](https://img.shields.io/badge/GitHub-0d0221?style=for-the-badge&logo=github&logoColor=00d4ff)](https://github.com/Kir4itsu) profile or you can dm me to [![Discord](https://img.shields.io/badge/Discord-0d0221?style=for-the-badge&logo=discord&logoColor=7b2fff)](https://discord.com/users/775314296661213194).

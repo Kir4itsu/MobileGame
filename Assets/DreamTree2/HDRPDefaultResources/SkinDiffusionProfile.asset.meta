@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 87cf91f7b06d9de42801ec17c5ff2993
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 316919
+  packageName: Dream Tree 2
+  packageVersion: 1.0
+  assetPath: Assets/DreamTree2/HDRPDefaultResources/SkinDiffusionProfile.asset
+  uploadId: 748161

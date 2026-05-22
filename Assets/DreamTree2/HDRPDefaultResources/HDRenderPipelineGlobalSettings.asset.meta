@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 72ea796db63fb484c8a5b3583626db74
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 316919
+  packageName: Dream Tree 2
+  packageVersion: 1.0
+  assetPath: Assets/DreamTree2/HDRPDefaultResources/HDRenderPipelineGlobalSettings.asset
+  uploadId: 748161

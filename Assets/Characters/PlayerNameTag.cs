@@ -1,14 +1,16 @@
 using UnityEngine;
 using UnityEngine.UI;
-using Photon.Pun;
 
-public class PlayerNameTag : MonoBehaviourPun
+public class PlayerNameTag : MonoBehaviour
 {
     [Header("UI References")]
     public Text nameText;
     public GameObject nameTagCanvas;
     public float heightOffset = 2f;
-    
+
+    [Header("Settings")]
+    public string playerName = "Player";
+
     private Transform mainCamera;
 
     void Start()
@@ -22,15 +24,9 @@ public class PlayerNameTag : MonoBehaviourPun
         // Set nama player
         if (nameText != null)
         {
-            nameText.text = photonView.Owner.NickName;
+            nameText.text = playerName;
         }
 
-        // Hide nametag untuk player sendiri
-        if (photonView.IsMine)
-        {
-            nameTagCanvas.SetActive(false);
-        }
-        
         // Get main camera reference
         mainCamera = Camera.main?.transform;
     }
@@ -43,7 +39,7 @@ public class PlayerNameTag : MonoBehaviourPun
         // Nametag selalu ngadep ke camera
         nameTagCanvas.transform.LookAt(mainCamera);
         nameTagCanvas.transform.Rotate(0, 180, 0); // Flip agar teksnya tidak terbalik
-        
+
         // Posisi nametag di atas kepala player
         nameTagCanvas.transform.position = transform.position + Vector3.up * heightOffset;
     }
@@ -54,6 +50,7 @@ public class PlayerNameTag : MonoBehaviourPun
         if (nameText != null)
         {
             nameText.text = newName;
+            playerName = newName;
         }
     }
 }

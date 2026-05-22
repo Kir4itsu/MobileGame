@@ -1,5 +1,4 @@
 using UnityEngine;
-using Photon.Pun;
 
 /// <summary>
 /// Attach ke GameObject mobil.
@@ -45,17 +44,6 @@ public class VehicleEntry : MonoBehaviour
     // ─────────────────────────────────────────────
     void FindLocalPlayer()
     {
-        if (PhotonNetwork.IsConnected)
-        {
-            foreach (var pv in PhotonNetwork.PhotonViewCollection)
-            {
-                if (pv.IsMine && pv.gameObject.CompareTag("Player"))
-                {
-                    localPlayer = pv.transform;
-                    return;
-                }
-            }
-        }
         var p = GameObject.FindGameObjectWithTag("Player");
         if (p != null) localPlayer = p.transform;
     }
@@ -72,7 +60,6 @@ public class VehicleEntry : MonoBehaviour
         if (near == playerNearby) return;
         playerNearby = near;
 
-        // Ganti label tombol INTERACT jadi "NAIK" saat dekat, balik lagi saat menjauh
         SetInteractLabel(near ? "NAIK" : "INTERACT");
     }
 
@@ -81,15 +68,10 @@ public class VehicleEntry : MonoBehaviour
     // ─────────────────────────────────────────────
     void HandleInput()
     {
-        // PENTING: Hanya proses input kendaraan jika player memang dekat atau di dalam.
-        // Tanpa guard ini, ConsumeInteract() akan menghabiskan input milik NPC
-        // setiap frame, sehingga tombol INTERACT di NPC tidak pernah jalan di Android.
         if (!playerNearby && !playerInside) return;
 
-        // Cek tombol INTERACT (Android) atau E (PC)
         bool interactPressed = Input.GetKeyDown(KeyCode.E);
 
-        // Consume interact dari FloatingJoystick hanya saat kita eligible
         if (!interactPressed && FloatingJoystick.Instance != null)
             interactPressed = FloatingJoystick.Instance.ConsumeInteract();
 
@@ -115,7 +97,6 @@ public class VehicleEntry : MonoBehaviour
         playerInside = true;
         playerNearby = false;
 
-        // Ganti label tombol jadi "KELUAR"
         SetInteractLabel("KELUAR");
 
         var cc = localPlayer.GetComponent<CharacterController>();
@@ -126,7 +107,6 @@ public class VehicleEntry : MonoBehaviour
 
         vehicle.EnterVehicle(localPlayer);
 
-        // Minimap track mobil, bukan player
         if (MinimapSystem.Instance != null)
             MinimapSystem.Instance.SetTrackedTarget(this.transform);
 
@@ -139,12 +119,10 @@ public class VehicleEntry : MonoBehaviour
 
         playerInside = false;
 
-        // Kembalikan label tombol ke default
         SetInteractLabel("INTERACT");
 
         vehicle.ExitVehicle(localPlayer);
 
-        // Kembalikan minimap ke player
         if (MinimapSystem.Instance != null)
             MinimapSystem.Instance.ResetTrackedTarget();
 
@@ -168,8 +146,6 @@ public class VehicleEntry : MonoBehaviour
     // ─────────────────────────────────────────────
     void SetInteractLabel(string label)
     {
-        // Cari tombol INTERACT di canvas FloatingJoystick
-        // FloatingJoystick buat tombolnya dengan nama "InteractButton"
         var interactGO = GameObject.Find("InteractButton");
         if (interactGO == null) return;
 

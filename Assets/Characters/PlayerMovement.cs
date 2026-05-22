@@ -1,7 +1,6 @@
 using UnityEngine;
-using Photon.Pun;
 
-public class PlayerMovement : MonoBehaviourPun
+public class PlayerMovement : MonoBehaviour
 {
     [Header("Movement Settings")]
     public float walkSpeed = 3f;
@@ -18,18 +17,12 @@ public class PlayerMovement : MonoBehaviourPun
     [Header("Mobile Sprint Button (opsional)")]
     public UnityEngine.UI.Button sprintButton;
 
-    [Header("Multiplayer Settings")]
-    public bool disableOtherPlayerRenderers = false;
-
     // Private
     private CharacterController controller;
     private CameraController cameraController;
     private float verticalVelocity = 0f;
     private bool isGrounded;
     private bool isMobileSprinting = false;
-
-    // Helper: true jika ini player milik kita (atau offline/editor mode)
-    bool IsLocalPlayer => photonView.IsMine || !Photon.Pun.PhotonNetwork.IsConnected;
 
     void Start()
     {
@@ -40,24 +33,9 @@ public class PlayerMovement : MonoBehaviourPun
         if (animator == null)
             animator = GetComponent<Animator>();
 
-        if (IsLocalPlayer)
-        {
-            SetupCamera();
-            SetupSprintButton();
-            gameObject.tag = "Player";
-            Debug.Log($"[PlayerMovement] Local player spawned. ViewID: {photonView.ViewID}");
-        }
-        else
-        {
-            if (cameraController != null)
-                Destroy(cameraController);
-
-            if (controller != null)
-                controller.enabled = false;
-
-            gameObject.tag = "OtherPlayer";
-            Debug.Log($"[PlayerMovement] Remote player spawned. ViewID: {photonView.ViewID}, Owner: {photonView.Owner?.NickName}");
-        }
+        SetupCamera();
+        SetupSprintButton();
+        gameObject.tag = "Player";
     }
 
     // ─────────────────────────────────────────────
@@ -89,7 +67,7 @@ public class PlayerMovement : MonoBehaviourPun
             if (cameraController != null)
             {
                 cameraController.target = this.transform;
-                Debug.Log("[PlayerMovement] Camera controller target set to local player");
+                Debug.Log("[PlayerMovement] Camera controller target set to player");
             }
             else
             {
@@ -131,13 +109,10 @@ public class PlayerMovement : MonoBehaviourPun
     // ─────────────────────────────────────────────
     void Update()
     {
-        if (!IsLocalPlayer) return;
-
         // ── Input ─────────────────────────────────
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");
 
-        // Ambil dari singleton FloatingJoystick — tidak perlu drag reference
         if (FloatingJoystick.Instance != null)
         {
             h += FloatingJoystick.Instance.Horizontal;
@@ -165,9 +140,6 @@ public class PlayerMovement : MonoBehaviourPun
             else return;
         }
 
-        // Pakai MovementForward/Right dari CameraController (yaw murni tanpa shoulder offset)
-        // agar karakter tidak miring di Shoulder mode.
-        // Fallback ke cameraTransform jika CameraController tidak ada.
         Vector3 cameraForward, cameraRight;
         if (cameraController != null)
         {
@@ -186,8 +158,6 @@ public class PlayerMovement : MonoBehaviourPun
 
         if (isFPP)
         {
-            // FPP: gerak berdasarkan arah karakter (bukan kamera)
-            // sehingga joystick kiri tidak ikut putar kamera
             Vector3 charForward = transform.forward;
             Vector3 charRight   = transform.right;
             charForward.y = 0f; charForward.Normalize();
@@ -196,7 +166,6 @@ public class PlayerMovement : MonoBehaviourPun
         }
         else
         {
-            // TPP: gerak relatif kamera seperti biasa
             moveDirection = cameraForward * v + cameraRight * h;
         }
 
@@ -207,8 +176,6 @@ public class PlayerMovement : MonoBehaviourPun
         {
             if (isFPP)
             {
-                // FPP: karakter ngikutin kamera (dari swipe kanan)
-                // joystick kiri hanya gerak maju/mundur/strafe
                 transform.rotation = Quaternion.Euler(0, cameraTransform.eulerAngles.y, 0);
             }
             else
@@ -221,7 +188,6 @@ public class PlayerMovement : MonoBehaviourPun
         }
         else if (isFPP)
         {
-            // FPP diam: karakter tetap ngikutin arah kamera
             transform.rotation = Quaternion.Euler(0, cameraTransform.eulerAngles.y, 0);
         }
 
@@ -270,7 +236,6 @@ public class PlayerMovement : MonoBehaviourPun
     // ─────────────────────────────────────────────
     public void SetFirstPersonVisibility(bool visible)
     {
-        if (!IsLocalPlayer) return;
         foreach (Renderer r in GetComponentsInChildren<Renderer>())
             r.enabled = visible;
     }
@@ -280,7 +245,6 @@ public class PlayerMovement : MonoBehaviourPun
         Rigidbody hitRb = hit.collider.attachedRigidbody;
         if (hitRb == null || !hitRb.isKinematic) return;
 
-        // Push player menjauh dari NPC
         Vector3 pushDir = hit.moveDirection;
         pushDir.y = 0f;
         controller.Move(-pushDir * 0.1f);
@@ -288,16 +252,11 @@ public class PlayerMovement : MonoBehaviourPun
 
     void OnGUI()
     {
-        if (!IsLocalPlayer) return;
         if (Input.GetKey(KeyCode.F1))
         {
             GUILayout.BeginArea(new Rect(10, 10, 300, 200));
-            GUILayout.Label($"ViewID: {photonView.ViewID}");
-            GUILayout.Label($"Owner: {(photonView.Owner != null ? photonView.Owner.NickName : "Offline")}");
-            GUILayout.Label($"IsMine: {photonView.IsMine}");
             GUILayout.Label($"Position: {transform.position}");
             GUILayout.Label($"Grounded: {isGrounded}");
-            GUILayout.Label($"Players in Room: {(PhotonNetwork.CurrentRoom != null ? PhotonNetwork.CurrentRoom.PlayerCount.ToString() : "Offline")}");
             GUILayout.Label($"Joystick: {(FloatingJoystick.Instance != null ? "Connected" : "Not Found")}");
             GUILayout.EndArea();
         }

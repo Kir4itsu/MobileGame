@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 58114a51cbdb72e4da5bb4d50e6db8c9
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 316919
+  packageName: Dream Tree 2
+  packageVersion: 1.0
+  assetPath: Assets/DreamTree2/HDRPDefaultResources/FoliageDiffusionProfile.asset
+  uploadId: 748161
