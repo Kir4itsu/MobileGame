@@ -1674,8 +1674,7 @@ public class SettingsMenu : MonoBehaviour
     void ExitGame()
     {
         Debug.Log("[SettingsMenu] Keluar game...");
-        if (Photon.Pun.PhotonNetwork.IsConnected)
-            Photon.Pun.PhotonNetwork.Disconnect();
+
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
 #elif UNITY_WEBGL

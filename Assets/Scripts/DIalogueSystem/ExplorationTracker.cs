@@ -16,17 +16,14 @@ public class ExplorationTracker : MonoBehaviour
 
     void Start()
     {
-        // Auto-cari semua ExploreLocation di scene
         allLocations = FindObjectsByType<ExploreLocation>(
             FindObjectsSortMode.None).ToList();
-        Debug.Log($"[Tracker] {allLocations.Count} lokasi ditemukan.");
+        Debug.Log($"[ExplorationTracker] {allLocations.Count} lokasi ditemukan.");
     }
 
-    /// Ambil daftar lokasi yang BELUM dikunjungi
     public List<ExploreLocation> GetUnvisited()
         => allLocations.Where(l => !l.IsVisited).ToList();
 
-    /// Ambil satu rekomendasi acak (atau null kalau semua sudah dikunjungi)
     public ExploreLocation GetRandomRecommendation()
     {
         var unvisited = GetUnvisited();
@@ -34,6 +31,6 @@ public class ExplorationTracker : MonoBehaviour
         return unvisited[Random.Range(0, unvisited.Count)];
     }
 
-    public int TotalLocations  => allLocations.Count;
-    public int VisitedCount    => allLocations.Count(l => l.IsVisited);
+    public int TotalLocations => allLocations.Count;
+    public int VisitedCount   => allLocations.Count(l => l.IsVisited);
 }
