@@ -8,15 +8,21 @@ using UnityEngine.UI;
 /// 1. Attach script ini ke GameObject kosong di scene
 /// 2. Play — minimap otomatis muncul di kiri atas
 /// 3. Kamera minimap otomatis follow player
+///
+/// Setting yang disarankan untuk scale karakter = 2, tinggi lantai ~5-6:
+///   cameraHeight   = 10
+///   clipAboveHead  = 4   → nearClip = 6  (render dari ~4u di atas kepala ke bawah)
+///   clipBelowFeet  = 6   → farClip  = 16 (render sampai ~6u di bawah kaki)
 /// </summary>
 public class MinimapSystem : MonoBehaviour
 {
     public static MinimapSystem Instance { get; private set; }
 
     [Header("Minimap Settings")]
-    public float mapSize        = 150f;   // ukuran minimap di layar (px)
-    public float cameraHeight   = 30f;    // ketinggian kamera minimap dari player
-    public float cameraViewSize = 20f;    // area yang dicakup (orthographic size)
+    public float mapSize        = 150f;  // ukuran minimap di layar (px)
+    public float cameraHeight   = 10f;  // ketinggian kamera dari posisi Y player
+                                         // scale karakter=2 → tinggi ~3.4u, jadi 10 = ~3u di atas kepala
+    public float cameraViewSize = 20f;  // area yang dicakup (orthographic size)
     public Vector2 screenOffset = new Vector2(20f, 20f); // jarak dari pojok kiri atas
 
     [Header("Visual")]
@@ -29,9 +35,17 @@ public class MinimapSystem : MonoBehaviour
     public float playerDotSize  = 14f;
 
     [Header("Floor Clip Settings")]
-    [Tooltip("Berapa unit di atas posisi Y player yang masih dirender minimap. " +
-             "Naikkan kalau atap lantai atas masih keliatan di minimap.")]
-    public float clipAbovePlayer = 1.5f;
+    [Tooltip("Berapa unit di ATAS kepala karakter yang masih dirender kamera minimap.\n" +
+             "Karakter scale=2 → tinggi ~3.4u. Default 4 = sedikit di atas kepala.\n" +
+             "Formula: nearClipPlane = cameraHeight - clipAboveHead\n" +
+             "Kurangi kalau atap gedung lain bocor masuk minimap.")]
+    public float clipAboveHead = 4f;
+
+    [Tooltip("Berapa unit di BAWAH posisi Y player yang masih dirender.\n" +
+             "Tinggi lantai ~5-6u. Default 6 = cukup untuk melihat seluruh lantai.\n" +
+             "Formula: farClipPlane = cameraHeight + clipBelowFeet\n" +
+             "Naikkan kalau lantai masih terpotong.")]
+    public float clipBelowFeet = 6f;
 
     // Public API — dipakai VehicleMusicPlayer agar tidak nimpa
     public RectTransform PanelRT  { get; private set; }
@@ -41,7 +55,7 @@ public class MinimapSystem : MonoBehaviour
     private Camera        _minimapCam;
     private RenderTexture _renderTex;
     private Transform     _playerTransform;
-    private Transform     _trackedTarget;   // target aktif (player atau mobil)
+    private Transform     _trackedTarget;
     private Canvas        _canvas;
     private RawImage      _mapImage;
     private GameObject    _playerDot;
@@ -62,7 +76,6 @@ public class MinimapSystem : MonoBehaviour
 
     System.Collections.IEnumerator Init()
     {
-        // Tunggu player spawn (Photon butuh beberapa frame)
         yield return new WaitForSeconds(0.8f);
 
         FindPlayer();
@@ -77,12 +90,11 @@ public class MinimapSystem : MonoBehaviour
     // ──────────────────────────────────────────────
     void FindPlayer()
     {
-        // Cari player dengan tag "Player"
         GameObject player = GameObject.FindGameObjectWithTag("Player");
         if (player != null)
         {
             _playerTransform = player.transform;
-            _trackedTarget   = player.transform; // default track player
+            _trackedTarget   = player.transform;
             Debug.Log("[Minimap] Player ditemukan: " + player.name);
         }
         else
@@ -94,20 +106,11 @@ public class MinimapSystem : MonoBehaviour
     // ──────────────────────────────────────────────
     //  PUBLIC API — dipanggil dari VehicleEntry
     // ──────────────────────────────────────────────
-
-    /// <summary>
-    /// Saat masuk mobil: minimap track transform mobil, bukan player.
-    /// Panggil dari VehicleEntry.TryEnter()
-    /// </summary>
     public void SetTrackedTarget(Transform target)
     {
         _trackedTarget = target != null ? target : _playerTransform;
     }
 
-    /// <summary>
-    /// Saat keluar mobil: kembalikan tracking ke player.
-    /// Panggil dari VehicleEntry.TryExit()
-    /// </summary>
     public void ResetTrackedTarget()
     {
         _trackedTarget = _playerTransform;
@@ -118,20 +121,22 @@ public class MinimapSystem : MonoBehaviour
     // ──────────────────────────────────────────────
     void CreateMinimapCamera()
     {
-        // Buat RenderTexture
         _renderTex = new RenderTexture(512, 512, 16, RenderTextureFormat.ARGB32);
         _renderTex.antiAliasing = 1;
         _renderTex.Create();
 
-        // Buat Camera
         GameObject camGO = new GameObject("MinimapCamera");
         DontDestroyOnLoad(camGO);
 
         _minimapCam = camGO.AddComponent<Camera>();
         _minimapCam.orthographic     = true;
         _minimapCam.orthographicSize = cameraViewSize;
-        _minimapCam.nearClipPlane    = Mathf.Max(0.01f, cameraHeight - clipAbovePlayer);
-        _minimapCam.farClipPlane     = cameraHeight + 50f;
+        // nearClip = cameraHeight(10) - clipAboveHead(4) = 6
+        // artinya: render mulai dari player.y + 4 ke bawah (sedikit di atas kepala)
+        _minimapCam.nearClipPlane    = Mathf.Max(0.01f, cameraHeight - clipAboveHead);
+        // farClip = cameraHeight(10) + clipBelowFeet(6) = 16
+        // artinya: render sampai player.y - 6 (melewati lantai satu tingkat)
+        _minimapCam.farClipPlane     = cameraHeight + clipBelowFeet;
         _minimapCam.targetTexture    = _renderTex;
         _minimapCam.clearFlags       = CameraClearFlags.SolidColor;
         _minimapCam.backgroundColor  = new Color(0.1f, 0.15f, 0.1f, 1f);
@@ -171,7 +176,6 @@ public class MinimapSystem : MonoBehaviour
         panelRT.anchoredPosition = new Vector2(screenOffset.x, -screenOffset.y);
         panelRT.sizeDelta        = new Vector2(mapSize, mapSize);
 
-        // Expose ke VehicleMusicPlayer
         PanelRT  = panelRT;
         UICanvas = _canvas;
 
@@ -281,7 +285,6 @@ public class MinimapSystem : MonoBehaviour
         CreateDirLabel(canvasParent, "N", new Vector2(0f, -borderThickness - 18f),
             new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
             new Color(1f, 0.3f, 0.3f, 1f));
-
         CreateDirLabel(canvasParent, "S", new Vector2(0f,  borderThickness + 18f),
             new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
             new Color(0.6f, 0.6f, 0.6f, 0.7f));
@@ -322,7 +325,6 @@ public class MinimapSystem : MonoBehaviour
     {
         if (_minimapCam == null || _renderTex == null) return;
 
-        // Retry cari player kalau belum ketemu
         if (_playerTransform == null)
         {
             GameObject p = GameObject.FindGameObjectWithTag("Player");
@@ -334,10 +336,9 @@ public class MinimapSystem : MonoBehaviour
             else return;
         }
 
-        // Gunakan _trackedTarget (mobil saat driving, player saat jalan kaki)
         Transform target = _trackedTarget != null ? _trackedTarget : _playerTransform;
 
-        // ── Update kamera minimap ─────────────────
+        // ── Posisi kamera tepat di atas target ───
         _minimapCam.transform.position = new Vector3(
             target.position.x,
             target.position.y + cameraHeight,
@@ -346,10 +347,15 @@ public class MinimapSystem : MonoBehaviour
 
         _minimapCam.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
-        // ── Near clip dinamis per lantai ──────────
-        _minimapCam.nearClipPlane = Mathf.Max(0.01f, cameraHeight - clipAbovePlayer);
+        // ── Clip planes — disesuaikan scale karakter=2, tinggi lantai ~5-6 ──
+        // nearClip = cameraHeight(10) - clipAboveHead(4) = 6
+        //   → render mulai dari player.y+4 ke bawah (tepat di atas kepala)
+        // farClip  = cameraHeight(10) + clipBelowFeet(6) = 16
+        //   → render sampai player.y-6 (seluruh tinggi lantai tercover)
+        _minimapCam.nearClipPlane = Mathf.Max(0.01f, cameraHeight - clipAboveHead);
+        _minimapCam.farClipPlane  = cameraHeight + clipBelowFeet;
 
-        // Arrow ikut rotasi target (player atau mobil)
+        // ── Arrow ikut rotasi target ──────────────
         if (_playerDot != null)
         {
             float angle = target.eulerAngles.y;
