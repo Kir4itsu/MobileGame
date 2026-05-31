@@ -306,20 +306,41 @@ public class CameraController : MonoBehaviour
 
         float clampMin = minCamDistance + 0.01f;
         float clampMax = cameraMode == CameraMode.Vehicle
-            ? vehicleDistance * 2f           // vehicle: zoom max 2x jarak default
+            ? vehicleDistance * 2f
             : maxZoomDist * characterScale;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         if (Input.touchCount == 2)
         {
-            float dist = Vector2.Distance(
-                Input.GetTouch(0).position, Input.GetTouch(1).position);
-            if (_prevPinchDist >= 0f)
+            // ── Cek apakah salah satu jari adalah jari joystick ──
+            // Jika ya, skip zoom — jari kiri di analog + jari kanan geser kamera
+            // bukan dimaksudkan sebagai pinch zoom.
+            int joystickFinger = FloatingJoystick.Instance != null
+                ? FloatingJoystick.Instance.JoystickFingerId
+                : -1;
+
+            Touch t0 = Input.GetTouch(0);
+            Touch t1 = Input.GetTouch(1);
+
+            bool joystickInvolved = (joystickFinger != -1)
+                && (t0.fingerId == joystickFinger || t1.fingerId == joystickFinger);
+
+            if (joystickInvolved)
             {
-                float delta = (dist - _prevPinchDist) * pinchSpeed;
-                _targetDist = Mathf.Clamp(_targetDist - delta, clampMin, clampMax);
+                // Salah satu jari adalah joystick — ini bukan pinch zoom, reset saja
+                _prevPinchDist = -1f;
             }
-            _prevPinchDist = dist;
+            else
+            {
+                // Dua jari bebas (tidak ada joystick aktif) — pinch zoom normal
+                float dist = Vector2.Distance(t0.position, t1.position);
+                if (_prevPinchDist >= 0f)
+                {
+                    float delta = (dist - _prevPinchDist) * pinchSpeed;
+                    _targetDist = Mathf.Clamp(_targetDist - delta, clampMin, clampMax);
+                }
+                _prevPinchDist = dist;
+            }
         }
         else _prevPinchDist = -1f;
 #else

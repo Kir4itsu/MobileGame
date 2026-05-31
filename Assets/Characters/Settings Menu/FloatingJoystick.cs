@@ -78,6 +78,10 @@ public class FloatingJoystick : MonoBehaviour
     private Vector2 _rawCameraDelta   = Vector2.zero;
     private Vector2 _smoothCameraDelta= Vector2.zero;
 
+    // ── Floating joystick origin (dynamic spawn point) ────────────
+    private Vector2 _joystickSpawnPos  = Vector2.zero; // posisi background saat jari turun
+    private bool    _joystickVisible   = false;         // background disembunyikan saat tidak dipakai
+
     // ── WebGL / PC mouse tracking ─────────────────
     private bool    _mouseJoystickActive = false;
     private bool    _mouseCameraActive   = false;
@@ -246,53 +250,83 @@ public class FloatingJoystick : MonoBehaviour
         // Jika dialogue aktif, reset joystick dan skip
         if (DialogueManager.Instance != null && DialogueManager.Instance.IsDialogueActive())
         {
-            _joystickFingerId        = -1;
-            Horizontal               = 0f;
-            Vertical                 = 0f;
-            _handle.anchoredPosition = Vector2.zero;
+            ReleaseJoystick();
             return;
         }
 
-        Vector2 bgCenter = GetScreenCenter(_background);
-        float   maxRange = (_background.sizeDelta.x * 0.5f) - (handleSize * 0.5f);
+        // Batas kiri layar: sisi kiri 45% layar (sisakan ruang untuk camera touch)
+        float leftBoundary = Screen.width * 0.45f;
 
         foreach (Touch touch in Input.touches)
         {
-            bool isLeft = touch.position.x < Screen.width * 0.5f;
-            if (!isLeft) continue;
-
-            if (touch.phase == TouchPhase.Began && _joystickFingerId == -1)
+            // ── Jari baru di sisi kiri — spawn joystick di titik sentuh ──
+            if (touch.phase == TouchPhase.Began
+                && touch.position.x < leftBoundary
+                && !IsTouchOnAnyButton(touch.position)
+                && _joystickFingerId == -1)
             {
-                float dist = Vector2.Distance(touch.position, bgCenter);
-                if (dist < _background.sizeDelta.x * 0.5f * 1.5f)
-                    _joystickFingerId = touch.fingerId;
+                _joystickFingerId = touch.fingerId;
+
+                // Pindahkan background ke posisi jari (screen → canvas local)
+                Vector2 localPos;
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    (RectTransform)_background.parent,
+                    touch.position,
+                    null,
+                    out localPos);
+                _background.anchoredPosition = localPos;
+                _joystickSpawnPos            = touch.position;
+
+                // Tampilkan joystick
+                _background.gameObject.SetActive(true);
+                _joystickVisible = true;
+                _handle.anchoredPosition = Vector2.zero;
             }
 
             if (touch.fingerId != _joystickFingerId) continue;
 
             if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary)
             {
-                Vector2 clamped      = Vector2.ClampMagnitude(touch.position - bgCenter, maxRange);
+                float maxRange   = (_background.sizeDelta.x * 0.5f) - (handleSize * 0.5f);
+                Vector2 clamped  = Vector2.ClampMagnitude(touch.position - _joystickSpawnPos, maxRange);
                 _handle.anchoredPosition = clamped;
                 Horizontal = clamped.x / maxRange;
                 Vertical   = clamped.y / maxRange;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
-                _joystickFingerId        = -1;
-                Horizontal               = 0f;
-                Vertical                 = 0f;
-                _handle.anchoredPosition = Vector2.zero;
+                ReleaseJoystick();
             }
         }
     }
+
+    void ReleaseJoystick()
+    {
+        _joystickFingerId        = -1;
+        Horizontal               = 0f;
+        Vertical                 = 0f;
+        _handle.anchoredPosition = Vector2.zero;
+
+        // Sembunyikan joystick saat tidak dipakai (biar layar bersih)
+        if (_joystickVisible)
+        {
+            _background.gameObject.SetActive(false);
+            _joystickVisible = false;
+        }
+    }
+
+    /// <summary>
+    /// Finger ID joystick aktif saat ini. Dipakai CameraController untuk
+    /// skip pinch zoom jika salah satu jari adalah jari joystick.
+    /// -1 = tidak ada jari joystick aktif.
+    /// </summary>
+    public int JoystickFingerId => _joystickFingerId;
 
     void HandleNativeCamera()
     {
         _rawCameraDelta = Vector2.zero;
 
         // Jika dialogue aktif, jangan konsumsi touch sebagai kamera
-        // supaya DialogueManager bisa baca Input.touches untuk next line
         if (DialogueManager.Instance != null && DialogueManager.Instance.IsDialogueActive())
         {
             _cameraFingerId = -1;
@@ -302,10 +336,17 @@ public class FloatingJoystick : MonoBehaviour
 
         foreach (Touch touch in Input.touches)
         {
-            bool isRight    = touch.position.x > Screen.width * 0.5f;
+            // Sisi kanan layar saja untuk kamera — kiri sudah milik joystick
+            bool isRight    = touch.position.x > Screen.width * 0.45f;
             bool isOnButton = IsTouchOnAnyButton(touch.position);
+            // Pastikan bukan jari yang sama dengan joystick
+            bool isJoystickFinger = (touch.fingerId == _joystickFingerId);
 
-            if (touch.phase == TouchPhase.Began && isRight && !isOnButton && _cameraFingerId == -1)
+            if (touch.phase == TouchPhase.Began
+                && isRight
+                && !isOnButton
+                && !isJoystickFinger
+                && _cameraFingerId == -1)
             {
                 _cameraFingerId = touch.fingerId;
                 _rawCameraDelta = Vector2.zero;
@@ -620,6 +661,11 @@ public class FloatingJoystick : MonoBehaviour
         bgImg.sprite        = CreateCircleSprite(128);
         bgImg.raycastTarget = false;
 
+        // Sembunyikan di awal — akan muncul dynamic saat jari menyentuh sisi kiri
+        // Khusus PC/WebGL tetap visible (tidak floating)
+        if (_inputMode == InputMode.NativeTouch)
+            bgGO.SetActive(false);
+
         // Rim
         GameObject rimGO = new GameObject("Rim");
         rimGO.transform.SetParent(bgGO.transform, false);
@@ -649,28 +695,26 @@ public class FloatingJoystick : MonoBehaviour
         handleImg.sprite        = CreateCircleSprite(128);
         handleImg.raycastTarget = false;
 
-        // ── Tombol RUN ────────────────────────────
-        _rtSprint = CreateButtonWithRT(canvasGO.transform, "SprintButton", "RUN",
-            _defSprint, new Vector2(1f, 0f),
-            new Color(0.15f, 0.5f, 1f, 0.5f), size: 120f,
+        // ── Tombol RUN — GTA style pure shapes ──
+        _rtSprint = BuildGTAButton(canvasGO.transform, "SprintButton",
+            _defSprint, new Vector2(1f, 0f), DEF_SPRINT_SIZE,
             onDown: () => SprintHeld = true,
             onUp:   () => SprintHeld = false);
+        BuildRunIcon(_rtSprint);
 
-        // ── Tombol INTERACT ───────────────────────
-        _rtInteract = CreateButtonWithRT(canvasGO.transform, "InteractButton", "INTERACT",
-            _defInteract, new Vector2(1f, 0f),
-            new Color(0.1f, 0.85f, 0.3f, 0.5f), size: 110f,
+        // ── Tombol INTERACT — GTA style pure shapes ──
+        _rtInteract = BuildGTAButton(canvasGO.transform, "InteractButton",
+            _defInteract, new Vector2(1f, 0f), DEF_INTERACT_SIZE,
             onDown: () => { InteractPressed = true; _interactFrame = Time.frameCount; },
-            onUp:   () => { /* tidak perlu reset, ConsumeInteract() yang handle */ });
+            onUp:   () => { });
+        BuildInteractIcon(_rtInteract);
 
-        // ── Tombol VIEW (TPP/FPP) ─────────────────
-        GameObject viewGO = CreateButtonGO(canvasGO.transform, "ViewToggleButton", "TPP",
-            _defViewToggle, new Vector2(1f, 0f),
-            new Color(0.6f, 0.2f, 0.8f, 0.5f), size: 100f,
+        // ── Tombol VIEW (TPP/FPP) — GTA style pure shapes ──
+        _rtViewToggle = BuildGTAButton(canvasGO.transform, "ViewToggleButton",
+            _defViewToggle, new Vector2(1f, 0f), DEF_VIEW_TOGGLE_SIZE,
             onDown: () => ToggleViewMode(),
             onUp:   () => { });
-        _rtViewToggle  = viewGO.GetComponent<RectTransform>();
-        _viewModeLabel = viewGO.GetComponentInChildren<Text>();
+        _viewModeLabel = BuildCameraIcon(_rtViewToggle);
 
         // Hapus layout ViewToggle lama kalau y negatif (sisa anchor lama)
         if (PlayerPrefs.HasKey("view_y") && PlayerPrefs.GetFloat("view_y") < 0f)
@@ -679,19 +723,16 @@ public class FloatingJoystick : MonoBehaviour
             PlayerPrefs.DeleteKey("view_y");
         }
 
-        // ── Tombol PHONE (HP in-game) ─────────────
-        _rtPhone = CreateButtonWithRT(canvasGO.transform, "PhoneButton", "Phone",
-            _defPhone, new Vector2(1f, 0f),
-            new Color(0.9f, 0.6f, 0.1f, 0.5f), size: DEF_PHONE_SIZE,
+        // ── Tombol PHONE — GTA style pure shapes ──
+        _rtPhone = BuildGTAButton(canvasGO.transform, "PhoneButton",
+            _defPhone, new Vector2(1f, 0f), DEF_PHONE_SIZE,
             onDown: () => {
-                // Cari PhoneManager dan toggle HP
                 var pm = UnityEngine.Object.FindFirstObjectByType<PhoneManager>();
-                if (pm != null)
-                    pm.TogglePhone();
-                else
-                    Debug.LogWarning("[FloatingJoystick] PhoneManager tidak ditemukan di scene!");
+                if (pm != null) pm.TogglePhone();
+                else Debug.LogWarning("[FloatingJoystick] PhoneManager tidak ditemukan!");
             },
             onUp: () => { });
+        BuildPhoneIcon(_rtPhone);
 
         LoadLayout();
         StartCoroutine(FindCameraController());
@@ -1006,7 +1047,209 @@ public class FloatingJoystick : MonoBehaviour
     }
 
     // ═════════════════════════════════════════════
-    //  BUTTON FACTORY
+    //  GTA SA STYLE BUTTON FACTORY
+    // ═════════════════════════════════════════════
+
+    // Warna GTA SA: dark circle, white icon
+    static readonly Color C_BTN  = new Color(0.18f, 0.18f, 0.19f, 0.92f);
+    static readonly Color C_ICON = new Color(1f,    1f,    1f,    0.90f);
+    static readonly Color C_DIM  = new Color(1f,    1f,    1f,    0.40f);
+    static readonly Color C_BADGE= new Color(0.08f, 0.08f, 0.10f, 1f);
+
+    /// Buat lingkaran gelap GTA-style + EventTrigger, kembalikan RectTransform-nya
+    RectTransform BuildGTAButton(Transform parent, string name,
+        Vector2 anchoredPos, Vector2 anchor, float size,
+        System.Action onDown, System.Action onUp)
+    {
+        var go  = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        var rt  = go.AddComponent<RectTransform>();
+        rt.sizeDelta        = new Vector2(size, size);
+        rt.anchorMin        = anchor;
+        rt.anchorMax        = anchor;
+        rt.pivot            = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = anchoredPos;
+        var img = go.AddComponent<Image>();
+        img.color  = C_BTN;
+        img.sprite = CreateCircleSprite(128);
+        var et = go.AddComponent<EventTrigger>();
+        AddTrigger(et, EventTriggerType.PointerDown, _ => { img.color = new Color(0.30f,0.30f,0.32f,0.95f); onDown?.Invoke(); });
+        AddTrigger(et, EventTriggerType.PointerUp,   _ => { img.color = C_BTN; onUp?.Invoke(); });
+        return rt;
+    }
+
+    /// Buat rect putih (icon part), anchor center, tidak raycast
+    RectTransform IconRect(Transform parent, string n, float x, float y, float w, float h, Color col, bool rounded = false)
+    {
+        var go  = new GameObject(n);
+        go.transform.SetParent(parent, false);
+        var rt  = go.AddComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot     = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(w, h);
+        rt.anchoredPosition = new Vector2(x, y);
+        var img = go.AddComponent<Image>();
+        img.color = col;
+        img.sprite = rounded ? CreateRoundedSprite(64, 0.35f) : CreateCircleSprite(128);
+        img.raycastTarget = false;
+        return rt;
+    }
+
+    /// Buat circle putih (icon part)
+    RectTransform IconCircle(Transform parent, string n, float x, float y, float d, Color col)
+    {
+        var rt = IconRect(parent, n, x, y, d, d, col, false);
+        return rt;
+    }
+
+    // ── PHONE icon: body + layar + earpiece + home button ──
+    void BuildPhoneIcon(RectTransform btn)
+    {
+        float s  = btn.sizeDelta.x;
+        Transform p = btn.transform;
+        // Body HP lebih besar dan proporsional
+        float bw = s * 0.38f;
+        float bh = s * 0.56f;
+        float cy = 0f;
+        // Outline body (kotak utama)
+        IconRect(p, "Body",   0, cy, bw, bh, C_ICON, true);
+        // Layar (gelap, fill dalam body)
+        IconRect(p, "Screen", 0, cy + s*0.04f, bw*0.72f, bh*0.52f, new Color(0.18f,0.18f,0.20f,1f), true);
+        // Garis kamera kecil di atas layar
+        IconRect(p, "Cam",    0, cy + bh*0.40f, bw*0.22f, s*0.033f, new Color(0.18f,0.18f,0.20f,1f), true);
+        // Home button bulat di bawah
+        IconCircle(p, "Home", 0, cy - bh*0.40f, s*0.095f, new Color(0.18f,0.18f,0.20f,1f));
+    }
+
+    // ── CAMERA icon: body + hump + lensa + badge teks ──
+    Text BuildCameraIcon(RectTransform btn)
+    {
+        float s = btn.sizeDelta.x;
+        Transform p = btn.transform;
+        float bw = s*0.52f; float bh = s*0.30f; float cy = s*0.01f;
+        IconRect(p, "Hump",  -s*0.08f, cy+bh*0.5f+s*0.065f, bw*0.36f, s*0.13f, C_ICON, true);
+        IconRect(p, "Body",   0, cy, bw, bh, C_ICON, true);
+        IconCircle(p, "LensO", 0, cy, s*0.155f, C_ICON);
+        IconCircle(p, "LensI", 0, cy, s*0.09f,  new Color(0.18f,0.18f,0.20f,1f));
+        IconRect(p, "Flash",  bw*0.32f, cy+bh*0.28f, s*0.07f, s*0.055f, C_DIM, true);
+        // Badge TPP/FPP
+        var badge = IconRect(p, "Badge", bw*0.30f, cy-bh*0.45f, s*0.30f, s*0.17f, C_BADGE, true);
+        var tgo   = new GameObject("ModeLabel");
+        tgo.transform.SetParent(badge.transform, false);
+        var trt   = tgo.AddComponent<RectTransform>();
+        trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+        trt.offsetMin = trt.offsetMax = Vector2.zero;
+        var txt   = tgo.AddComponent<Text>();
+        txt.text  = "TPP";
+        txt.font  = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        txt.fontSize  = Mathf.RoundToInt(s * 0.145f);
+        txt.fontStyle = FontStyle.Bold;
+        txt.color     = Color.white;
+        txt.alignment = TextAnchor.MiddleCenter;
+        txt.raycastTarget = false;
+        return txt;   // kembalikan Text untuk SyncViewLabel
+    }
+
+    // ── INTERACT icon: tangan angkat — 4 jari slim + telapak ──
+    void BuildInteractIcon(RectTransform btn)
+    {
+        float s  = btn.sizeDelta.x;
+        Transform p = btn.transform;
+        float fw = s * 0.085f;   // lebar jari lebih slim
+        float cy = s * 0.03f;    // center Y sedikit ke atas
+
+        // 4 jari: tinggi dan posisi X berbeda-beda
+        float[] fh = { s*0.30f, s*0.36f, s*0.34f, s*0.28f };
+        float[] fx = { -s*0.145f, -s*0.048f, s*0.048f, s*0.145f };
+        // Semua jari puncaknya sejajar di atas (rata atas)
+        float topEdge = cy + s * 0.20f;
+        for (int i = 0; i < 4; i++)
+        {
+            float centerY = topEdge - fh[i] * 0.5f;
+            IconRect(p, "F"+i, fx[i], centerY, fw, fh[i], C_ICON, true);
+        }
+        // Telapak — lebar mencakup semua jari
+        IconRect(p, "Palm", -s*0.01f, cy - s*0.115f, s*0.42f, s*0.16f, C_ICON, true);
+        // Ibu jari — pendek, di kiri bawah, miring ke kanan
+        var th = IconRect(p, "Thumb", -s*0.26f, cy - s*0.05f, fw, s*0.19f, C_ICON, true);
+        th.localRotation = Quaternion.Euler(0, 0, 25f);
+    }
+
+    // ── RUN icon: stick figure berlari — proporsional ──
+    void BuildRunIcon(RectTransform btn)
+    {
+        float s  = btn.sizeDelta.x;
+        Transform p = btn.transform;
+        // Geser figure ke kanan sedikit biar speed lines punya ruang di kiri
+        float cx = s * 0.07f;
+        float cy = 0f;
+        float lw = s * 0.07f; // lebar anggota tubuh
+
+        // Kepala — tidak terlalu tinggi
+        IconCircle(p, "Head", cx + s*0.03f, cy + s*0.175f, s*0.105f, C_ICON);
+
+        // Badan — miring sedikit ke depan
+        var tor = IconRect(p, "Torso", cx, cy + s*0.04f, lw, s*0.175f, C_ICON, true);
+        tor.localRotation = Quaternion.Euler(0, 0, 12f);
+
+        // Lengan kiri — ke depan bawah
+        var aL = IconRect(p, "ArmL", cx - s*0.09f, cy + s*0.05f, lw*0.85f, s*0.155f, C_ICON, true);
+        aL.localRotation = Quaternion.Euler(0, 0, 38f);
+
+        // Lengan kanan — ke belakang atas
+        var aR = IconRect(p, "ArmR", cx + s*0.12f, cy + s*0.07f, lw*0.85f, s*0.14f, C_ICON, true);
+        aR.localRotation = Quaternion.Euler(0, 0, -32f);
+
+        // Kaki kiri — melangkah ke depan
+        var lL = IconRect(p, "LegL", cx - s*0.065f, cy - s*0.115f, lw, s*0.195f, C_ICON, true);
+        lL.localRotation = Quaternion.Euler(0, 0, -30f);
+
+        // Kaki kanan — melangkah ke belakang
+        var lR = IconRect(p, "LegR", cx + s*0.09f, cy - s*0.105f, lw, s*0.195f, C_ICON, true);
+        lR.localRotation = Quaternion.Euler(0, 0, 24f);
+
+        // Speed lines (3 garis di kiri)
+        float lineX = cx - s*0.28f;
+        float[] lws2 = { s*0.14f, s*0.10f, s*0.07f };
+        float[] lys2 = { cy + s*0.07f, cy - s*0.01f, cy - s*0.09f };
+        for (int i = 0; i < 3; i++)
+        {
+            float a = 0.60f - i*0.15f;
+            IconRect(p, "Line"+i, lineX + lws2[i]*0.5f - s*0.07f, lys2[i],
+                     lws2[i], s*0.045f, new Color(1,1,1,a), true);
+        }
+    }
+
+    // Sprite rounded (untuk rect icon parts)
+    Sprite CreateRoundedSprite(int res, float cornerRatio)
+    {
+        var tex = new Texture2D(res, res, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        float corner = res * cornerRatio;
+        for (int y = 0; y < res; y++)
+        for (int x = 0; x < res; x++)
+        {
+            float cx2 = Mathf.Clamp(x, corner, res-corner);
+            float cy2 = Mathf.Clamp(y, corner, res-corner);
+            float dx = x-cx2, dy = y-cy2;
+            float dist = Mathf.Sqrt(dx*dx+dy*dy);
+            float a = Mathf.Clamp01(1f-(dist-(corner-1f))/1.5f);
+            tex.SetPixel(x, y, new Color(1,1,1,a));
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0,0,res,res), new Vector2(0.5f,0.5f), res);
+    }
+
+    // ── PUBLIC INPUT INJECTOR (dipanggil external jika perlu) ──
+    public void SetInteractPressed()
+    {
+        InteractPressed = true;
+        _interactFrame  = Time.frameCount;
+    }
+    public void SetSprintHeld(bool held) { SprintHeld = held; }
+
+    // ═════════════════════════════════════════════
+    //  BUTTON FACTORY (lama — tetap ada untuk kompatibilitas)
     // ═════════════════════════════════════════════
     RectTransform CreateButtonWithRT(Transform parent, string name, string label,
         Vector2 anchoredPos, Vector2 anchor, Color color, float size,

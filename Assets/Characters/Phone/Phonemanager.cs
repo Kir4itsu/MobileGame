@@ -30,9 +30,11 @@ public class PhoneManager : MonoBehaviour
     public AudioClip closeSound;
 
     [Header("Settings")]
-    public KeyCode pcOpenKey = KeyCode.UpArrow; // Tombol PC untuk buka HP
+    public KeyCode pcOpenKey = KeyCode.PageUp; // Tombol PC untuk buka/tutup HP
 
     private bool isPhoneOpen = false;
+    private float _lastToggleTime = -999f;
+    private const float TOGGLE_COOLDOWN = 0.3f; // detik minimum antar toggle
 
     void Start()
     {
@@ -47,6 +49,10 @@ public class PhoneManager : MonoBehaviour
 
     void Update()
     {
+        // PC: PageUp untuk toggle HP
+        if (Input.GetKeyDown(pcOpenKey))
+            TogglePhone();
+
         // Android Back Button / PC Escape → delegasi ke PhoneNavigator
         // GoBack() di PhoneNavigator sudah handle:
         //   - Jika di sub-panel → balik ke Home
@@ -63,6 +69,11 @@ public class PhoneManager : MonoBehaviour
 
     public void TogglePhone()
     {
+        // Debounce — abaikan jika dipanggil terlalu cepat (double-trigger guard)
+        float now = Time.unscaledTime;
+        if (now - _lastToggleTime < TOGGLE_COOLDOWN) return;
+        _lastToggleTime = now;
+
         isPhoneOpen = !isPhoneOpen;
 
         if (phoneUI != null)
@@ -87,6 +98,12 @@ public class PhoneManager : MonoBehaviour
         }
 
         Debug.Log($"[PhoneManager] HP {(isPhoneOpen ? "dibuka" : "ditutup")}");
+    }
+
+    public void OpenPhone()
+    {
+        if (!isPhoneOpen)
+            TogglePhone();
     }
 
     public void ClosePhone()

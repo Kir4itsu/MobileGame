@@ -21,7 +21,6 @@ public class MinimapSystem : MonoBehaviour
     [Header("Minimap Settings")]
     public float mapSize        = 150f;  // ukuran minimap di layar (px)
     public float cameraHeight   = 10f;  // ketinggian kamera dari posisi Y player
-                                         // scale karakter=2 → tinggi ~3.4u, jadi 10 = ~3u di atas kepala
     public float cameraViewSize = 20f;  // area yang dicakup (orthographic size)
     public Vector2 screenOffset = new Vector2(20f, 20f); // jarak dari pojok kiri atas
 
@@ -35,19 +34,13 @@ public class MinimapSystem : MonoBehaviour
     public float playerDotSize  = 14f;
 
     [Header("Floor Clip Settings")]
-    [Tooltip("Berapa unit di ATAS kepala karakter yang masih dirender kamera minimap.\n" +
-             "Karakter scale=2 → tinggi ~3.4u. Default 4 = sedikit di atas kepala.\n" +
-             "Formula: nearClipPlane = cameraHeight - clipAboveHead\n" +
-             "Kurangi kalau atap gedung lain bocor masuk minimap.")]
+    [Tooltip("Berapa unit di ATAS kepala karakter yang masih dirender kamera minimap.")]
     public float clipAboveHead = 4f;
 
-    [Tooltip("Berapa unit di BAWAH posisi Y player yang masih dirender.\n" +
-             "Tinggi lantai ~5-6u. Default 6 = cukup untuk melihat seluruh lantai.\n" +
-             "Formula: farClipPlane = cameraHeight + clipBelowFeet\n" +
-             "Naikkan kalau lantai masih terpotong.")]
+    [Tooltip("Berapa unit di BAWAH posisi Y player yang masih dirender.")]
     public float clipBelowFeet = 6f;
 
-    // Public API — dipakai VehicleMusicPlayer agar tidak nimpa
+    // Public API
     public RectTransform PanelRT  { get; private set; }
     public Canvas        UICanvas { get; private set; }
 
@@ -104,7 +97,7 @@ public class MinimapSystem : MonoBehaviour
     }
 
     // ──────────────────────────────────────────────
-    //  PUBLIC API — dipanggil dari VehicleEntry
+    //  PUBLIC API
     // ──────────────────────────────────────────────
     public void SetTrackedTarget(Transform target)
     {
@@ -131,11 +124,7 @@ public class MinimapSystem : MonoBehaviour
         _minimapCam = camGO.AddComponent<Camera>();
         _minimapCam.orthographic     = true;
         _minimapCam.orthographicSize = cameraViewSize;
-        // nearClip = cameraHeight(10) - clipAboveHead(4) = 6
-        // artinya: render mulai dari player.y + 4 ke bawah (sedikit di atas kepala)
         _minimapCam.nearClipPlane    = Mathf.Max(0.01f, cameraHeight - clipAboveHead);
-        // farClip = cameraHeight(10) + clipBelowFeet(6) = 16
-        // artinya: render sampai player.y - 6 (melewati lantai satu tingkat)
         _minimapCam.farClipPlane     = cameraHeight + clipBelowFeet;
         _minimapCam.targetTexture    = _renderTex;
         _minimapCam.clearFlags       = CameraClearFlags.SolidColor;
@@ -257,7 +246,7 @@ public class MinimapSystem : MonoBehaviour
         arrowImg.color  = playerDotColor;
         arrowImg.sprite = CreateArrowSprite();
 
-        // ── Label "N" utara ───────────────────────
+        // ── Tab "U" gaya GTA 4 ───────────────────
         CreateCompassLabel(canvasGO.transform, panelRT);
 
         // ── Label nama minimap ────────────────────
@@ -278,48 +267,91 @@ public class MinimapSystem : MonoBehaviour
         labelTxt.fontStyle = FontStyle.Bold;
         labelTxt.color     = new Color(0.7f, 0.7f, 0.7f, 0.8f);
         labelTxt.alignment = TextAnchor.MiddleCenter;
+
+        // ── Tap area ─────────────────────────────
+        GameObject tapGO = new GameObject("MinimapTapArea");
+        tapGO.transform.SetParent(_panelGO.transform, false);
+
+        RectTransform tapRT = tapGO.AddComponent<RectTransform>();
+        tapRT.anchorMin = Vector2.zero;
+        tapRT.anchorMax = Vector2.one;
+        tapRT.offsetMin = Vector2.zero;
+        tapRT.offsetMax = Vector2.zero;
+
+        Image tapImg   = tapGO.AddComponent<Image>();
+        tapImg.color   = Color.clear;
+
+        Button tapBtn = tapGO.AddComponent<Button>();
+        var tapCb     = tapBtn.colors;
+        tapCb.normalColor      = Color.clear;
+        tapCb.highlightedColor = new Color(1f, 1f, 1f, 0.08f);
+        tapCb.pressedColor     = new Color(1f, 1f, 1f, 0.18f);
+        tapBtn.colors = tapCb;
+        tapBtn.targetGraphic = tapImg;
+        tapBtn.onClick.AddListener(OnMinimapTapped);
     }
 
+    // ──────────────────────────────────────────────
+    //  TAP HANDLER
+    // ──────────────────────────────────────────────
+    void OnMinimapTapped()
+    {
+        var sm = UnityEngine.Object.FindFirstObjectByType<SettingsMenu>();
+        if (sm != null)
+            sm.OpenMapTab();
+        else
+            Debug.LogWarning("[Minimap] SettingsMenu tidak ditemukan di scene!");
+    }
+
+    // ──────────────────────────────────────────────
+    //  COMPASS — GTA 4 STYLE TAB
+    // ──────────────────────────────────────────────
     void CreateCompassLabel(Transform canvasParent, RectTransform panelRT)
     {
-        CreateDirLabel(canvasParent, "N", new Vector2(0f, -borderThickness - 18f),
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            new Color(1f, 0.3f, 0.3f, 1f));
-        CreateDirLabel(canvasParent, "S", new Vector2(0f,  borderThickness + 18f),
-            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-            new Color(0.6f, 0.6f, 0.6f, 0.7f));
-        CreateDirLabel(canvasParent, "W", new Vector2(borderThickness + 14f, 0f),
-            new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-            new Color(0.6f, 0.6f, 0.6f, 0.7f));
-        CreateDirLabel(canvasParent, "E", new Vector2(-borderThickness - 14f, 0f),
-            new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-            new Color(0.6f, 0.6f, 0.6f, 0.7f));
-    }
+        // Tab putih kecil menonjol di tepi atas border — persis gaya GTA 4
+        // Setengah tab di luar border, setengah menindih border
+        float tabW = 24f;
+        float tabH = 18f;
+        // anchoredPosition Y positif = geser ke atas (di luar panel)
+        // Atur supaya pusat tab ada persis di garis tepi atas
+        float tabY = tabH * 0.5f;
 
-    void CreateDirLabel(Transform parent, string text, Vector2 offset,
-                        Vector2 anchorMin, Vector2 anchorMax, Color color)
-    {
-        GameObject go = new GameObject("Dir_" + text);
-        go.transform.SetParent(_panelGO.transform, false);
+        // ── Background tab: rounded rect putih ──
+        GameObject tabGO = new GameObject("NorthTab");
+        tabGO.transform.SetParent(_panelGO.transform, false);
 
-        RectTransform rt = go.AddComponent<RectTransform>();
-        rt.anchorMin        = anchorMin;
-        rt.anchorMax        = anchorMax;
-        rt.pivot            = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = offset;
-        rt.sizeDelta        = new Vector2(20f, 20f);
+        RectTransform tabRT = tabGO.AddComponent<RectTransform>();
+        tabRT.anchorMin        = new Vector2(0.5f, 1f);
+        tabRT.anchorMax        = new Vector2(0.5f, 1f);
+        tabRT.pivot            = new Vector2(0.5f, 0.5f);
+        tabRT.anchoredPosition = new Vector2(0f, tabH * 0.1f);
+        tabRT.sizeDelta        = new Vector2(tabW, tabH);
 
-        Text t      = go.AddComponent<Text>();
-        t.text      = text;
+        Image tabImg  = tabGO.AddComponent<Image>();
+        tabImg.color  = new Color(0.95f, 0.95f, 0.95f, 1f);
+        tabImg.sprite = CreateRoundedRectSprite(48, 32, 16);
+
+        // ── Teks "U" hitam di tengah tab ──
+        GameObject uLabelGO = new GameObject("Dir_U");
+        uLabelGO.transform.SetParent(tabGO.transform, false);
+
+        RectTransform uLabelRT = uLabelGO.AddComponent<RectTransform>();
+        uLabelRT.anchorMin = Vector2.zero;
+        uLabelRT.anchorMax = Vector2.one;
+        uLabelRT.offsetMin = Vector2.zero;
+        uLabelRT.offsetMax = Vector2.zero;
+
+        Text t      = uLabelGO.AddComponent<Text>();
+        t.text      = "U";
         t.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        t.fontSize  = 13;
+        t.fontSize  = 12;
         t.fontStyle = FontStyle.Bold;
-        t.color     = color;
+        t.color     = new Color(0.08f, 0.08f, 0.08f, 1f);
         t.alignment = TextAnchor.MiddleCenter;
     }
 
     // ──────────────────────────────────────────────
-    //  UPDATE — follow target, utara selalu atas
+    //  UPDATE
     // ──────────────────────────────────────────────
     void LateUpdate()
     {
@@ -338,7 +370,6 @@ public class MinimapSystem : MonoBehaviour
 
         Transform target = _trackedTarget != null ? _trackedTarget : _playerTransform;
 
-        // ── Posisi kamera tepat di atas target ───
         _minimapCam.transform.position = new Vector3(
             target.position.x,
             target.position.y + cameraHeight,
@@ -347,15 +378,9 @@ public class MinimapSystem : MonoBehaviour
 
         _minimapCam.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
-        // ── Clip planes — disesuaikan scale karakter=2, tinggi lantai ~5-6 ──
-        // nearClip = cameraHeight(10) - clipAboveHead(4) = 6
-        //   → render mulai dari player.y+4 ke bawah (tepat di atas kepala)
-        // farClip  = cameraHeight(10) + clipBelowFeet(6) = 16
-        //   → render sampai player.y-6 (seluruh tinggi lantai tercover)
         _minimapCam.nearClipPlane = Mathf.Max(0.01f, cameraHeight - clipAboveHead);
         _minimapCam.farClipPlane  = cameraHeight + clipBelowFeet;
 
-        // ── Arrow ikut rotasi target ──────────────
         if (_playerDot != null)
         {
             float angle = target.eulerAngles.y;
@@ -406,6 +431,25 @@ public class MinimapSystem : MonoBehaviour
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, res, res),
             new Vector2(0.5f, 0.5f), res);
+    }
+
+    // Rounded rect sprite untuk tab utara
+    Sprite CreateRoundedRectSprite(int w, int h, int radius)
+    {
+        Texture2D tex  = new Texture2D(w, h, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            int cx  = Mathf.Clamp(x, radius, w - radius);
+            int cy  = Mathf.Clamp(y, radius, h - radius);
+            float d = Vector2.Distance(new Vector2(x, y), new Vector2(cx, cy));
+            float a = Mathf.Clamp01(1f - (d - (radius - 1f)));
+            tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), w);
     }
 
     Sprite CreateArrowSprite()

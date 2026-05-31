@@ -51,11 +51,21 @@ public class PhoneUIBuilder : MonoBehaviour
     private PhoneManager      _phoneManager;
     private PhoneNavigator    _phoneNavigator;
     private MusicPlayerPhone  _musicPlayer;
+    private CameraMode        _cameraMode;
+    private GalleryManager    _galleryManager;
     private GameObject        _phoneUI;
     private GameObject        _homePanel;
     private GameObject        _musicPanel;
     private Text              _clockText;
     private AudioSource       _audioSource;
+
+    // ── Keyboard navigation state ─────────────────────────────────
+    // Daftar item home menu — diisi saat BuildHomePanel()
+    private readonly System.Collections.Generic.List<GameObject> _menuItems
+        = new System.Collections.Generic.List<GameObject>();
+    private int _selectedMenuIndex = 0;
+    // Jumlah total menu item (diset setelah BuildHomePanel)
+    private int _menuItemCount = 0;
 
     // ─────────────────────────────────────────────────────────────
     void Start()
@@ -221,6 +231,7 @@ public class PhoneUIBuilder : MonoBehaviour
         // ── Konten di dalam screen ────────────────
         BuildStatusBar(screen.transform);
         _homePanel  = BuildHomePanel(screen.transform);
+        _menuItemCount = _menuItems.Count;
         _musicPanel = BuildMusicPanel(screen.transform);
 
         // Nav bar bawah
@@ -380,7 +391,7 @@ public class PhoneUIBuilder : MonoBehaviour
         hrt.sizeDelta = new Vector2(-14f, 24f);
 
         // Menu items
-        string[] labels = { "Music Player", "Messages", "Contacts", "Camera", "Multiplayer", "Options" };
+        string[] labels = { "Music Player", "Messages", "Contacts", "Camera", "Multiplayer", "Settings" };
         bool[]   sel    = { true, false, false, false, false, false };
 
         for (int i = 0; i < labels.Length; i++)
@@ -395,6 +406,7 @@ public class PhoneUIBuilder : MonoBehaviour
     {
         var item = new GameObject("Item_" + label);
         item.transform.SetParent(parent, false);
+        _menuItems.Add(item); // simpan untuk keyboard navigation
 
         var rt = item.AddComponent<RectTransform>();
         float itemH    = 0.115f;
@@ -450,11 +462,53 @@ public class PhoneUIBuilder : MonoBehaviour
                 }
             });
         }
+
+        // Tombol Camera — buka CameraMode
+        if (label == "Camera")
+        {
+            var btn = item.AddComponent<Button>();
+            var cb  = btn.colors;
+            cb.normalColor      = Color.clear;
+            cb.highlightedColor = new Color(1,1,1,0.05f);
+            cb.pressedColor     = new Color(0,0,0,0.2f);
+            btn.colors = cb;
+            btn.targetGraphic = bg;
+            btn.onClick.AddListener(() => {
+                if (_cameraMode != null)
+                    _cameraMode.OpenCamera();
+                else
+                    Debug.LogWarning("[PhoneUIBuilder] CameraMode belum di-wire!");
+            });
+        }
+
+        // Tombol Settings — buka SettingsMenu dan tutup HP
+        if (label == "Settings")
+        {
+            var btn = item.AddComponent<Button>();
+            var cb  = btn.colors;
+            cb.normalColor      = Color.clear;
+            cb.highlightedColor = new Color(1,1,1,0.05f);
+            cb.pressedColor     = new Color(0,0,0,0.2f);
+            btn.colors = cb;
+            btn.targetGraphic = bg;
+            btn.onClick.AddListener(() => {
+                // Tutup HP terlebih dahulu
+                if (_phoneManager != null)
+                    _phoneManager.ClosePhone();
+                // Buka Settings Menu
+                var sm = FindFirstObjectByType<SettingsMenu>();
+                if (sm != null)
+                    sm.OpenFromPhone();
+                else
+                    Debug.LogWarning("[PhoneUIBuilder] SettingsMenu tidak ditemukan di scene!");
+            });
+        }
     }
 
     // ─────────────────────────────────────────────
-    //  NAV BAR — Android style (Recents ▣  Home ⬤  Back ◀)
+    //  NAV BAR — Android style shapes (Recents ▣  Home ⬤  Back ◀)
     //  Back 1x = GoBack in-app, Back 2x cepat = ClosePhone
+    //  Toast bubble "Press 2x to close" muncul saat Back 1x ditekan
     // ─────────────────────────────────────────────
     void BuildNavBar(Transform parent)
     {
@@ -465,7 +519,7 @@ public class PhoneUIBuilder : MonoBehaviour
         rt.anchorMax = new Vector2(1f, 0f);
         rt.pivot     = new Vector2(0.5f, 0f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(0f, 50f);   // 50px fixed height dari bawah
+        rt.sizeDelta = new Vector2(0f, 50f);
         bar.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.04f, 1f);
 
         // Separator garis atas
@@ -477,22 +531,62 @@ public class PhoneUIBuilder : MonoBehaviour
         srt.anchoredPosition = Vector2.zero; srt.sizeDelta = new Vector2(0f, 1f);
         sep.AddComponent<Image>().color = C_SEPARATOR;
 
-        // Recents (kiri)
-        var recGO  = MakeNavBtn(bar.transform, "RecentsButton",  "REC",  new Vector2(0.15f, 0.5f));
-        // Home (tengah)
-        var homeGO = MakeNavBtn(bar.transform, "HomeNavButton",  "HOME", new Vector2(0.5f,  0.5f));
-        // Back (kanan) — nama "BackButton" dipakai WireScripts untuk PhoneNavigator
-        var backGO = MakeNavBtn(bar.transform, "BackButton",     "BACK", new Vector2(0.85f, 0.5f));
+        // Recents (kiri) — icon 3 bar horizontal bertumpuk
+        var recGO  = MakeNavBtnShape(bar.transform, "RecentsButton",  NavIconType.Recents, new Vector2(0.15f, 0.5f));
+        // Home (tengah) — icon lingkaran
+        var homeGO = MakeNavBtnShape(bar.transform, "HomeNavButton",  NavIconType.Home,    new Vector2(0.5f,  0.5f));
+        // Back (kanan) — icon segitiga menunjuk kiri
+        var backGO = MakeNavBtnShape(bar.transform, "BackButton",     NavIconType.Back,    new Vector2(0.85f, 0.5f));
 
-        // Attach AndroidNavController untuk logika back 2x = close
+        // ── Toast bubble "Press 2x to close phone" ──────────────────
+        // Posisi: tepat di atas NavBar, lebar sama dengan phoneUI
+        var toast = new GameObject("BackToast");
+        toast.transform.SetParent(parent, false);
+        var trt = toast.AddComponent<RectTransform>();
+        trt.anchorMin = new Vector2(0f, 0f);
+        trt.anchorMax = new Vector2(1f, 0f);
+        trt.pivot     = new Vector2(0.5f, 0f);
+        trt.anchoredPosition = new Vector2(0f, 52f); // tepat di atas NavBar (50px) + 2px gap
+        trt.sizeDelta = new Vector2(-24f, 32f);
+
+        // Background bubble gelap semi-transparan
+        var toastBg = toast.AddComponent<Image>();
+        toastBg.color = new Color(0.10f, 0.10f, 0.10f, 0.92f);
+
+        // Garis kiri hijau (aksen)
+        var accentGO = new GameObject("Accent");
+        accentGO.transform.SetParent(toast.transform, false);
+        var acrt = accentGO.AddComponent<RectTransform>();
+        acrt.anchorMin = Vector2.zero; acrt.anchorMax = new Vector2(0f, 1f);
+        acrt.pivot     = new Vector2(0f, 0.5f);
+        acrt.anchoredPosition = Vector2.zero;
+        acrt.sizeDelta = new Vector2(3f, 0f);
+        accentGO.AddComponent<Image>().color = C_GREEN;
+
+        // Teks
+        var toastTxt = MakeText(toast.transform, "Press BACK 2x to close phone", 16,
+            C_GRAY, TextAnchor.MiddleCenter);
+        var ttrt = toastTxt.GetComponent<RectTransform>();
+        FillRect(ttrt);
+        ttrt.offsetMin = new Vector2(8f, 0f); ttrt.offsetMax = Vector2.zero;
+        toast.SetActive(false); // disembunyikan sampai Back 1x ditekan
+
+        // Attach AndroidNavController
         var navCtrl = bar.AddComponent<AndroidNavController>();
-        navCtrl.backButton = backGO.GetComponent<Button>();
-        navCtrl.homeButton = homeGO.GetComponent<Button>();
+        navCtrl.backButton  = backGO.GetComponent<Button>();
+        navCtrl.homeButton  = homeGO.GetComponent<Button>();
+        navCtrl.toastObject = toast; // toast diatur oleh controller
 
         bar.name = "NavBar";
     }
 
-    GameObject MakeNavBtn(Transform parent, string goName, string icon, Vector2 anchorPos)
+    enum NavIconType { Recents, Home, Back }
+
+    /// <summary>
+    /// Buat nav button dengan icon dari pure shapes (Image rectangles/squares),
+    /// tanpa font atau sprite. Sepenuhnya reliable di semua device Android.
+    /// </summary>
+    GameObject MakeNavBtnShape(Transform parent, string goName, NavIconType iconType, Vector2 anchorPos)
     {
         var go = new GameObject(goName);
         go.transform.SetParent(parent, false);
@@ -500,20 +594,104 @@ public class PhoneUIBuilder : MonoBehaviour
         rt.anchorMin = anchorPos; rt.anchorMax = anchorPos;
         rt.pivot     = new Vector2(0.5f, 0.5f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(80f, 34f);  // lebih lebar agar teks muat
+        rt.sizeDelta = new Vector2(60f, 40f);
 
-        var bg  = go.AddComponent<Image>();
-        bg.color = new Color(0.15f, 0.15f, 0.15f, 0.8f);
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = bg;
+        var bg  = go.AddComponent<Image>(); bg.color = new Color(0f, 0f, 0f, 0f);
+        var btn = go.AddComponent<Button>(); btn.targetGraphic = bg;
         var cb  = btn.colors;
-        cb.normalColor      = new Color(0.15f, 0.15f, 0.15f, 0.8f);
-        cb.highlightedColor = new Color(0.3f,  0.3f,  0.3f,  1f);
-        cb.pressedColor     = new Color(0.05f, 0.05f, 0.05f, 1f);
+        cb.normalColor      = new Color(0f,   0f,   0f,   0f);
+        cb.highlightedColor = new Color(1f,   1f,   1f,   0.08f);
+        cb.pressedColor     = new Color(1f,   1f,   1f,   0.18f);
         btn.colors = cb;
 
-        var txtGO = MakeText(go.transform, icon, 18, C_WHITE, TextAnchor.MiddleCenter, FontStyle.Bold);
-        FillRect(txtGO.GetComponent<RectTransform>());
+        Color ic = new Color(0.75f, 0.75f, 0.75f, 1f); // abu terang — mirip Android stock
+
+        switch (iconType)
+        {
+            // ── RECENTS: 3 bar horizontal bertumpuk (mirip ikon recent apps) ──
+            case NavIconType.Recents:
+            {
+                float[] barWidths = { 18f, 14f, 10f }; // makin kecil ke bawah
+                float[] barY      = { 5f, 0f, -5f };
+                foreach (var (w, y) in System.Linq.Enumerable.Zip(barWidths, barY, (a,b) => (a,b)))
+                {
+                    var bar = new GameObject("Bar"); bar.transform.SetParent(go.transform, false);
+                    var brt = bar.AddComponent<RectTransform>();
+                    brt.anchorMin = brt.anchorMax = new Vector2(0.5f, 0.5f);
+                    brt.pivot = new Vector2(0.5f, 0.5f);
+                    brt.anchoredPosition = new Vector2(0f, y);
+                    brt.sizeDelta = new Vector2(w, 2.5f);
+                    bar.AddComponent<Image>().color = ic;
+                    bar.GetComponent<Image>().raycastTarget = false;
+                }
+                break;
+            }
+
+            // ── HOME: lingkaran dari center dot + 8 dot melingkar ──
+            case NavIconType.Home:
+            {
+                float r = 9f;
+                // Center
+                var c = new GameObject("C"); c.transform.SetParent(go.transform, false);
+                var crt = c.AddComponent<RectTransform>();
+                crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0.5f);
+                crt.pivot = new Vector2(0.5f, 0.5f);
+                crt.anchoredPosition = Vector2.zero; crt.sizeDelta = new Vector2(5f, 5f);
+                c.AddComponent<Image>().color = ic; c.GetComponent<Image>().raycastTarget = false;
+                // 8 dot melingkar
+                for (int d = 0; d < 8; d++)
+                {
+                    float angle = d * Mathf.PI * 2f / 8f;
+                    var dd = new GameObject("D" + d); dd.transform.SetParent(go.transform, false);
+                    var drt = dd.AddComponent<RectTransform>();
+                    drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.5f);
+                    drt.pivot = new Vector2(0.5f, 0.5f);
+                    drt.anchoredPosition = new Vector2(Mathf.Sin(angle) * r, Mathf.Cos(angle) * r);
+                    drt.sizeDelta = new Vector2(3.5f, 3.5f);
+                    dd.AddComponent<Image>().color = ic; dd.GetComponent<Image>().raycastTarget = false;
+                }
+                break;
+            }
+
+            // ── BACK: segitiga menunjuk kiri dari 3 bar miring ──
+            case NavIconType.Back:
+            {
+                // Segitiga kiri dibuat dari:
+                // 1 bar horizontal + 2 bar diagonal membentuk "<"
+                // Bar kiri-tengah (badan panah)
+                var body = new GameObject("Body"); body.transform.SetParent(go.transform, false);
+                var brt = body.AddComponent<RectTransform>();
+                brt.anchorMin = brt.anchorMax = new Vector2(0.5f, 0.5f);
+                brt.pivot = new Vector2(0.5f, 0.5f);
+                brt.anchoredPosition = new Vector2(-1f, 0f);
+                brt.sizeDelta = new Vector2(14f, 2.5f);
+                body.AddComponent<Image>().color = ic; body.GetComponent<Image>().raycastTarget = false;
+
+                // Bar atas-kiri (diagonal atas ">")
+                var topArm = new GameObject("TopArm"); topArm.transform.SetParent(go.transform, false);
+                var trt2 = topArm.AddComponent<RectTransform>();
+                trt2.anchorMin = trt2.anchorMax = new Vector2(0.5f, 0.5f);
+                trt2.pivot = new Vector2(0.5f, 0.5f);
+                trt2.anchoredPosition = new Vector2(-5f, 5f);
+                trt2.sizeDelta = new Vector2(10f, 2.5f);
+                topArm.AddComponent<Image>().color = ic; topArm.GetComponent<Image>().raycastTarget = false;
+                // Rotasi 45° counter-clockwise
+                topArm.transform.localEulerAngles = new Vector3(0f, 0f, 45f);
+
+                // Bar bawah-kiri (diagonal bawah)
+                var botArm = new GameObject("BotArm"); botArm.transform.SetParent(go.transform, false);
+                var brt2 = botArm.AddComponent<RectTransform>();
+                brt2.anchorMin = brt2.anchorMax = new Vector2(0.5f, 0.5f);
+                brt2.pivot = new Vector2(0.5f, 0.5f);
+                brt2.anchoredPosition = new Vector2(-5f, -5f);
+                brt2.sizeDelta = new Vector2(10f, 2.5f);
+                botArm.AddComponent<Image>().color = ic; botArm.GetComponent<Image>().raycastTarget = false;
+                // Rotasi -45°
+                botArm.transform.localEulerAngles = new Vector3(0f, 0f, -45f);
+                break;
+            }
+        }
+
         return go;
     }
 
@@ -859,6 +1037,18 @@ public class PhoneUIBuilder : MonoBehaviour
         {
             navCtrl.phoneNavigator = _phoneNavigator;
             navCtrl.phoneManager   = _phoneManager;
+            // Wire toast bubble yang dibuat di BuildNavBar
+            var toastGO = _phoneUI?.transform.Find("PhoneScreen/NavBar/BackToast")?.gameObject
+                       ?? _phoneUI?.transform.Find("PhoneScreen/BackToast")?.gameObject;
+            if (toastGO == null)
+            {
+                // Fallback: cari di seluruh subtree screen
+                var screen = _phoneUI?.transform.Find("PhoneScreen");
+                if (screen != null)
+                    foreach (Transform child in screen)
+                        if (child.name == "BackToast") { toastGO = child.gameObject; break; }
+            }
+            navCtrl.toastObject = toastGO;
         }
 
         // ── MusicPlayerPhone — harus di-assign DULU sebelum viz ──────
@@ -918,6 +1108,35 @@ public class PhoneUIBuilder : MonoBehaviour
 
         // Attach hook untuk hide/show tombol saat HP buka/tutup
         gameObject.AddComponent<PhoneVisibilityHook>();
+
+        // Attach keyboard navigator untuk navigasi menu dengan panah atas/bawah
+        var kbNav = gameObject.AddComponent<PhoneKeyboardNavigator>();
+        kbNav.phoneManager     = _phoneManager;
+        kbNav.phoneNavigator   = _phoneNavigator;
+        kbNav.homePanel        = _homePanel;
+        kbNav.menuItems        = _menuItems;
+        kbNav.menuItemCount    = _menuItemCount;
+        kbNav.onSelectItem     = SelectMenuItem;
+        kbNav.onActivateItem   = ActivateSelectedMenuItem;
+
+        // Reset highlight ke item pertama setiap kali HP dibuka
+       // _phoneManager.phoneUI.GetComponent<UnityEngine.UI.CanvasGroup>()?.ToString(); // dummy
+        // Pasang listener reset ke TogglePhone via OnEnable di PhoneUI
+        var resetHook = _phoneUI.AddComponent<PhoneOpenResetHook>();
+        resetHook.onOpened = () => { kbNav.ResetSelection(); };
+
+        // ── CameraMode + GalleryManager ──────────────────────────
+        _cameraMode = gameObject.GetComponent<CameraMode>() ?? gameObject.AddComponent<CameraMode>();
+        _cameraMode.phoneManager      = _phoneManager;
+        _cameraMode.phoneNavigator    = _phoneNavigator;
+        _cameraMode.playerCamera      = Camera.main;
+        _cameraMode.cameraController  = FindFirstObjectByType<CameraController>(); // FIX: switch FPP
+
+        _galleryManager = gameObject.GetComponent<GalleryManager>() ?? gameObject.AddComponent<GalleryManager>();
+        _galleryManager.phoneManager   = _phoneManager;
+        _galleryManager.phoneNavigator = _phoneNavigator;
+
+        _cameraMode.galleryManager = _galleryManager;
 
         Debug.Log("[PhoneUIBuilder] Semua script sudah di-wire!");
     }
@@ -1046,6 +1265,41 @@ public class PhoneUIBuilder : MonoBehaviour
         foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
             if (t.gameObject.name == name) return t;
         return null;
+    }
+
+    // ─────────────────────────────────────────────
+    //  KEYBOARD NAVIGATION HELPERS
+    // ─────────────────────────────────────────────
+
+    /// <summary>Highlight item pada index tertentu, clear sisanya.</summary>
+    public void SelectMenuItem(int index)
+    {
+        _selectedMenuIndex = index;
+        for (int i = 0; i < _menuItems.Count; i++)
+        {
+            var item   = _menuItems[i];
+            var bg     = item.GetComponent<Image>();
+            var border = item.transform.Find("Border")?.GetComponent<Image>();
+            var txt    = item.GetComponentInChildren<Text>();
+            bool sel   = (i == index);
+
+            if (bg     != null) bg.color     = sel ? C_BG_ITEM_SEL : C_BG_ITEM;
+            if (border != null) border.color  = sel ? C_GREEN       : new Color(0,0,0,0);
+            if (txt    != null)
+            {
+                txt.color     = sel ? C_GREEN : C_WHITE;
+                txt.fontStyle = sel ? FontStyle.Bold : FontStyle.Normal;
+            }
+        }
+    }
+
+    /// <summary>Jalankan aksi item yang sedang di-highlight (sama seperti di-tap).</summary>
+    public void ActivateSelectedMenuItem()
+    {
+        if (_selectedMenuIndex < 0 || _selectedMenuIndex >= _menuItems.Count) return;
+        var btn = _menuItems[_selectedMenuIndex].GetComponent<Button>();
+        if (btn != null)
+            btn.onClick.Invoke();
     }
 }
 
@@ -1215,9 +1469,11 @@ public class AndroidNavController : MonoBehaviour
     [HideInInspector] public Button         homeButton;
     [HideInInspector] public PhoneNavigator phoneNavigator;
     [HideInInspector] public PhoneManager   phoneManager;
+    [HideInInspector] public GameObject     toastObject;  // bubble "Press 2x to close"
 
     private float _lastBackTime  = -999f;
-    private const float DOUBLE_TAP = 0.4f; // detik maksimal jarak 2 tap dianggap double
+    private const float DOUBLE_TAP = 0.4f;
+    private Coroutine _toastCo = null;
 
     void Start()
     {
@@ -1234,21 +1490,147 @@ public class AndroidNavController : MonoBehaviour
 
         if (now - _lastBackTime <= DOUBLE_TAP)
         {
-            // Double tap → tutup HP
+            // Double tap → tutup HP, sembunyikan toast
             _lastBackTime = -999f;
+            if (toastObject != null) toastObject.SetActive(false);
+            if (_toastCo != null) { StopCoroutine(_toastCo); _toastCo = null; }
             phoneManager?.ClosePhone();
         }
         else
         {
-            // Single tap → GoBack dalam app
+            // Single tap → GoBack + tampilkan toast sebentar
             _lastBackTime = now;
             if (phoneNavigator != null)
                 phoneNavigator.GoBack();
+            ShowToast();
         }
     }
 
     void OnHomePressed()
     {
         phoneNavigator?.GoHome();
+    }
+
+    void ShowToast()
+    {
+        if (toastObject == null) return;
+        if (_toastCo != null) StopCoroutine(_toastCo);
+        _toastCo = StartCoroutine(ToastRoutine());
+    }
+
+    System.Collections.IEnumerator ToastRoutine()
+    {
+        toastObject.SetActive(true);
+
+        // Fade in cepat
+        var img = toastObject.GetComponent<Image>();
+        var txt = toastObject.GetComponentInChildren<Text>();
+        if (img != null) img.color = new Color(img.color.r, img.color.g, img.color.b, 0f);
+
+        float t = 0f;
+        while (t < 0.15f)
+        {
+            t += Time.unscaledDeltaTime;
+            float a = Mathf.Lerp(0f, 0.92f, t / 0.15f);
+            if (img != null) img.color = new Color(0.10f, 0.10f, 0.10f, a);
+            if (txt != null) txt.color = new Color(txt.color.r, txt.color.g, txt.color.b, a / 0.92f);
+            yield return null;
+        }
+
+        // Tahan 1.5 detik
+        yield return new WaitForSecondsRealtime(1.5f);
+
+        // Fade out
+        t = 0f;
+        while (t < 0.3f)
+        {
+            t += Time.unscaledDeltaTime;
+            float a = Mathf.Lerp(0.92f, 0f, t / 0.3f);
+            if (img != null) img.color = new Color(0.10f, 0.10f, 0.10f, a);
+            if (txt != null) txt.color = new Color(txt.color.r, txt.color.g, txt.color.b, a / 0.92f);
+            yield return null;
+        }
+
+        toastObject.SetActive(false);
+        _toastCo = null;
+    }
+}
+// ═════════════════════════════════════════════════════════════════
+//  PHONE KEYBOARD NAVIGATOR
+//  Navigasi menu HP dengan keyboard (PC):
+//  - PageUp      : Toggle buka/tutup HP  (sama seperti sebelumnya)
+//  - Panah Atas  : Pindah highlight ke item sebelumnya
+//  - Panah Bawah : Pindah highlight ke item berikutnya
+//  - Enter       : Jalankan item yang di-highlight
+//
+//  Hanya aktif saat HP terbuka dan HomePanel yang tampil.
+//  Saat di sub-panel (Music, dll) navigasi keyboard tidak berjalan
+//  supaya tidak konflik dengan kontrol lain.
+// ═════════════════════════════════════════════════════════════════
+public class PhoneKeyboardNavigator : MonoBehaviour
+{
+    [HideInInspector] public PhoneManager   phoneManager;
+    [HideInInspector] public PhoneNavigator phoneNavigator;
+    [HideInInspector] public GameObject     homePanel;     // referensi HomePanel untuk cek apakah sedang di home
+    [HideInInspector] public System.Collections.Generic.List<GameObject> menuItems;
+    [HideInInspector] public int            menuItemCount;
+
+    // Callback ke PhoneUIBuilder untuk highlight dan activate
+    [HideInInspector] public System.Action<int> onSelectItem;
+    [HideInInspector] public System.Action      onActivateItem;
+
+    private int _currentIndex = 0;
+
+    void Update()
+    {
+        // HP harus terbuka
+        if (phoneManager == null || !phoneManager.IsPhoneOpen) return;
+
+        // Hanya aktif saat HomePanel yang tampil (bukan sub-panel seperti Music)
+        bool isOnHome = homePanel == null || homePanel.activeSelf;
+        if (!isOnHome) return;
+
+        if (menuItemCount <= 0) return;
+
+        // Navigasi atas/bawah
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            _currentIndex = (_currentIndex - 1 + menuItemCount) % menuItemCount;
+            onSelectItem?.Invoke(_currentIndex);
+        }
+        else if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            _currentIndex = (_currentIndex + 1) % menuItemCount;
+            onSelectItem?.Invoke(_currentIndex);
+        }
+
+        // Konfirmasi pilihan
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            onActivateItem?.Invoke();
+        }
+    }
+
+    /// <summary>Reset index ke 0 saat HP ditutup/dibuka lagi.</summary>
+    public void ResetSelection()
+    {
+        _currentIndex = 0;
+        onSelectItem?.Invoke(_currentIndex);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════
+//  PHONE OPEN RESET HOOK
+//  Attach ke PhoneUI — panggil onOpened saat GameObject di-enable
+//  (yaitu saat HP dibuka). Digunakan untuk reset keyboard selection
+//  ke item pertama setiap kali HP baru dibuka.
+// ═════════════════════════════════════════════════════════════════
+public class PhoneOpenResetHook : MonoBehaviour
+{
+    [HideInInspector] public System.Action onOpened;
+
+    void OnEnable()
+    {
+        onOpened?.Invoke();
     }
 }

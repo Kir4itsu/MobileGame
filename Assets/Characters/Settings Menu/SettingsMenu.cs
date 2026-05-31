@@ -26,7 +26,6 @@ public class SettingsMenu : MonoBehaviour
     private GraphicRaycaster  _raycaster;
     private GameObject        _pauseMenuRoot;
     private GameObject        _editModeOverlay;
-    private GameObject        _pauseButton;
     private Text              _editModeHint;
     private Text              _resizeTargetLabel;
     private RectTransform     _rtBtnMinus;
@@ -190,54 +189,14 @@ public class SettingsMenu : MonoBehaviour
         _canvas.sortingOrder = 1000;
         CanvasScaler cs = canvasGO.AddComponent<CanvasScaler>();
         cs.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        cs.referenceResolution = new Vector2(1920, 1080);
+        cs.referenceResolution = new Vector2(1280, 720);
         cs.screenMatchMode     = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        cs.matchWidthOrHeight  = 1f; // landscape: match height
+        cs.matchWidthOrHeight  = 0.5f; // 0.5 = blend width & height, bekerja baik di semua orientasi Android
         _raycaster         = canvasGO.AddComponent<GraphicRaycaster>();
         _raycaster.enabled = false;
 
-        // ── Pause button canvas (always on top) ──
-        GameObject btnCvGO = new GameObject("PauseButtonCanvas");
-        DontDestroyOnLoad(btnCvGO);
-        Canvas btnCv = btnCvGO.AddComponent<Canvas>();
-        btnCv.renderMode   = RenderMode.ScreenSpaceOverlay;
-        btnCv.sortingOrder = 1001;
-        CanvasScaler bcs = btnCvGO.AddComponent<CanvasScaler>();
-        bcs.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        bcs.referenceResolution = new Vector2(1920, 1080);
-        bcs.screenMatchMode     = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        bcs.matchWidthOrHeight  = 1f; // landscape: match height
-        btnCvGO.AddComponent<GraphicRaycaster>();
-
-        CreatePauseButton(btnCvGO.transform);
         BuildPauseMenuRoot(canvasGO.transform);
         BuildEditOverlay(canvasGO.transform);
-    }
-
-    // ──────────────────────────────────────────────
-    //  PAUSE BUTTON  (hamburger, kanan atas)
-    // ──────────────────────────────────────────────
-    void CreatePauseButton(Transform parent)
-    {
-        GameObject btnGO = new GameObject("PauseButton");
-        btnGO.transform.SetParent(parent, false);
-        _pauseButton = btnGO;
-
-        RectTransform rt = btnGO.AddComponent<RectTransform>();
-        rt.sizeDelta        = new Vector2(60f, 60f);
-        rt.anchorMin        = new Vector2(1f, 1f);
-        rt.anchorMax        = new Vector2(1f, 1f);
-        rt.pivot            = new Vector2(1f, 1f);
-        rt.anchoredPosition = new Vector2(-18f, -18f);
-
-        Image img = btnGO.AddComponent<Image>();
-        img.color  = new Color(0f, 0f, 0f, 0.55f);
-        img.sprite = CreateRoundedSprite(8);
-
-        AddLabel(btnGO.transform, "☰", 28, Color.white);
-
-        Button btn = btnGO.AddComponent<Button>();
-        btn.onClick.AddListener(ToggleSettings);
     }
 
     // ══════════════════════════════════════════════
@@ -261,7 +220,7 @@ public class SettingsMenu : MonoBehaviour
         topRT.anchorMax        = new Vector2(1f, 1f);
         topRT.pivot            = new Vector2(0.5f, 1f);
         topRT.anchoredPosition = Vector2.zero;
-        topRT.sizeDelta        = new Vector2(0f, 64f);
+        topRT.sizeDelta        = new Vector2(0f, 80f);
         Image topImg = topBar.AddComponent<Image>();
         topImg.color = _headerBg;
 
@@ -273,7 +232,7 @@ public class SettingsMenu : MonoBehaviour
         tlRT.anchorMin        = new Vector2(0f, 1f);
         tlRT.anchorMax        = new Vector2(1f, 1f);
         tlRT.pivot            = new Vector2(0.5f, 1f);
-        tlRT.anchoredPosition = new Vector2(0f, -64f);
+        tlRT.anchoredPosition = new Vector2(0f, -80f);
         tlRT.sizeDelta        = new Vector2(0f, 2f);
         topLine.AddComponent<Image>().color = new Color(0.6f, 0.6f, 0.6f, 0.25f);
 
@@ -283,10 +242,10 @@ public class SettingsMenu : MonoBehaviour
         bodyRT.anchorMin        = new Vector2(0f, 0f);
         bodyRT.anchorMax        = new Vector2(1f, 1f);
         bodyRT.offsetMin        = new Vector2(0f, 0f);
-        bodyRT.offsetMax        = new Vector2(0f, -66f);
+        bodyRT.offsetMax        = new Vector2(0f, -82f);
 
         // Panel kiri — kategori
-        float leftW = 320f;
+        float leftW = 200f;
         GameObject leftPanel = MakeRect("LeftPanel", body.transform);
         RectTransform leftRT = leftPanel.GetComponent<RectTransform>();
         leftRT.anchorMin        = new Vector2(0f, 0f);
@@ -329,7 +288,7 @@ public class SettingsMenu : MonoBehaviour
         BuildBottomBar(_pauseMenuRoot.transform);
 
         // ── Tombol Tutup & Keluar — pojok kanan bawah, anchor dari kanan frame ──
-        float btnW = 150f, btnH = 48f, btnGap = 10f;
+        float btnW = 170f, btnH = 58f, btnGap = 12f;
         float fromBottom = 0f;
         float fromRight  = 16f;
 
@@ -342,7 +301,7 @@ public class SettingsMenu : MonoBehaviour
         rtKG.sizeDelta        = new Vector2(btnW, btnH);
         btnKeluar.AddComponent<Image>().color = _accentRed;
         ((Image)btnKeluar.GetComponent<Image>()).sprite = CreateRoundedSprite(6);
-        AddLabel(btnKeluar.transform, "Keluar Game", 19, Color.white);
+        AddLabel(btnKeluar.transform, "Keluar Game", 22, Color.white);
         Button bKG = btnKeluar.AddComponent<Button>(); bKG.onClick.AddListener(ConfirmExit);
 
         GameObject btnTutup = MakeRect("Btn_Tutup", _pauseMenuRoot.transform);
@@ -354,7 +313,7 @@ public class SettingsMenu : MonoBehaviour
         rtTT.sizeDelta        = new Vector2(btnW, btnH);
         btnTutup.AddComponent<Image>().color = _accentNeutral;
         ((Image)btnTutup.GetComponent<Image>()).sprite = CreateRoundedSprite(6);
-        AddLabel(btnTutup.transform, "Tutup", 19, Color.white);
+        AddLabel(btnTutup.transform, "Tutup", 22, Color.white);
         Button bTT = btnTutup.AddComponent<Button>(); bTT.onClick.AddListener(CloseSettings);
 
         // ── Tombol Simpan & Reset Grafik (muncul hanya saat tab Grafik) ──
@@ -408,7 +367,7 @@ public class SettingsMenu : MonoBehaviour
         _tabImages  = new Image[tabNames.Length];
         _tabTexts   = new Text[tabNames.Length];
 
-        float tabW = 180f;
+        float tabW = 160f;
         float totalW = tabW * tabNames.Length;
         float startX = -totalW / 2f + tabW / 2f;
 
@@ -427,7 +386,7 @@ public class SettingsMenu : MonoBehaviour
             img.color = _tabInactive;
             _tabImages[i] = img;
 
-            Text txt = AddLabelFull(tab.transform, tabNames[i], 20, _tabTextInact, FontStyle.Bold);
+            Text txt = AddLabelFull(tab.transform, tabNames[i], 22, _tabTextInact, FontStyle.Bold);
             txt.alignment = TextAnchor.MiddleCenter;
             _tabTexts[i] = txt;
 
@@ -486,7 +445,7 @@ public class SettingsMenu : MonoBehaviour
             }
             else
             {
-                float leftW = 320f;
+                float leftW = 200f;
                 _rightPanelRT.offsetMin = new Vector2(leftW + 2f, 0f);
                 _rightPanelRT.offsetMax = new Vector2(-4f, 0f);
             }
@@ -842,7 +801,7 @@ public class SettingsMenu : MonoBehaviour
         BuildCategoryPanel_Tampilan(rightContent.transform);
 
         // ── Tombol kategori kiri ─────────────────
-        float catH = 64f;
+        float catH = 76f;
         Color sepColor = new Color(1f, 1f, 1f, 0.18f);
 
         // Garis paling atas (di atas item Kontrol)
@@ -880,7 +839,7 @@ public class SettingsMenu : MonoBehaviour
             barRT.sizeDelta        = new Vector2(5f, 0f);
             bar.AddComponent<Image>().color = _accentGreen;
 
-            Text txt = AddLabelFull(catGO.transform, categories[i], 19,
+            Text txt = AddLabelFull(catGO.transform, categories[i], 21,
                 _catTextInact, FontStyle.Bold, new Vector2(18f, 0f));
             _catTexts.Add(txt);
 
@@ -1194,7 +1153,7 @@ public class SettingsMenu : MonoBehaviour
         rt.anchorMax        = new Vector2(1f, 0f);
         rt.pivot            = new Vector2(0.5f, 0f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta        = new Vector2(0f, 48f);
+        rt.sizeDelta        = new Vector2(0f, 56f);
         bar.AddComponent<Image>().color = new Color(0.04f, 0.04f, 0.04f, 1f);
 
         AddLabelAnchored(bar.transform,
@@ -1208,9 +1167,9 @@ public class SettingsMenu : MonoBehaviour
     // ══════════════════════════════════════════════
     void AddSectionTitle(Transform parent, string title, float y)
     {
-        AddLabelAnchored(parent, title.ToUpper(), 22,
+        AddLabelAnchored(parent, title.ToUpper(), 26,
             new Color(0.88f, 0.88f, 0.84f, 1f), FontStyle.Bold,
-            new Vector2(0f, 1f), new Vector2(30f, y), new Vector2(600f, 40f));
+            new Vector2(0f, 1f), new Vector2(30f, y), new Vector2(600f, 50f));
     }
 
     void AddRowSeparator(Transform parent, float y)
@@ -1228,13 +1187,13 @@ public class SettingsMenu : MonoBehaviour
     void AddSettingRow(Transform parent, string label, string sub, float y,
                        System.Action btnAction, string btnLabel, Color btnColor)
     {
-        AddLabelAnchored(parent, label, 20,
+        AddLabelAnchored(parent, label, 24,
             new Color(0.88f, 0.88f, 0.84f, 1f), FontStyle.Normal,
-            new Vector2(0f, 1f), new Vector2(30f, y - 2f), new Vector2(420f, 28f));
+            new Vector2(0f, 1f), new Vector2(30f, y - 2f), new Vector2(420f, 32f));
 
-        AddLabelAnchored(parent, sub, 15,
+        AddLabelAnchored(parent, sub, 18,
             new Color(0.52f, 0.52f, 0.50f, 1f), FontStyle.Normal,
-            new Vector2(0f, 1f), new Vector2(30f, y - 30f), new Vector2(420f, 22f));
+            new Vector2(0f, 1f), new Vector2(30f, y - 34f), new Vector2(420f, 26f));
 
         if (btnAction != null && btnLabel != null)
         {
@@ -1244,10 +1203,10 @@ public class SettingsMenu : MonoBehaviour
             aRT.anchorMax        = new Vector2(1f, 1f);
             aRT.pivot            = new Vector2(1f, 0.5f);
             aRT.anchoredPosition = new Vector2(-16f, y - 22f);
-            aRT.sizeDelta        = new Vector2(130f, 44f);
+            aRT.sizeDelta        = new Vector2(150f, 52f);
             ab.AddComponent<Image>().color  = btnColor;
             ((Image)ab.GetComponent<Image>()).sprite = CreateRoundedSprite(6);
-            AddLabel(ab.transform, btnLabel, 19, Color.white);
+            AddLabel(ab.transform, btnLabel, 22, Color.white);
             Button ab2 = ab.AddComponent<Button>(); ab2.onClick.AddListener(() => btnAction?.Invoke());
         }
     }
@@ -1260,7 +1219,7 @@ public class SettingsMenu : MonoBehaviour
         tRT.anchorMax        = new Vector2(0f, 1f);
         tRT.pivot            = new Vector2(0f, 0.5f);
         tRT.anchoredPosition = new Vector2(30f, y);
-        tRT.sizeDelta        = new Vector2(500f, 6f);
+        tRT.sizeDelta        = new Vector2(500f, 8f);
         track.AddComponent<Image>().color = new Color(0.25f, 0.25f, 0.25f, 1f);
 
         GameObject fill = MakeRect("SliderFill", track.transform);
@@ -1277,7 +1236,7 @@ public class SettingsMenu : MonoBehaviour
         thRT.anchorMax        = new Vector2(value, 0.5f);
         thRT.pivot            = new Vector2(0.5f, 0.5f);
         thRT.anchoredPosition = Vector2.zero;
-        thRT.sizeDelta        = new Vector2(16f, 16f);
+        thRT.sizeDelta        = new Vector2(22f, 22f);
         Image thumbImg = thumb.AddComponent<Image>();
         thumbImg.color  = Color.white;
         thumbImg.sprite = CreateRoundedSprite(8);
@@ -1291,7 +1250,7 @@ public class SettingsMenu : MonoBehaviour
         pRT.anchorMax        = new Vector2(1f, 1f);
         pRT.pivot            = new Vector2(1f, 0.5f);
         pRT.anchoredPosition = new Vector2(-30f, y - 14f);
-        pRT.sizeDelta        = new Vector2(60f, 28f);
+        pRT.sizeDelta        = new Vector2(76f, 36f);
         Image pillImg = pill.AddComponent<Image>();
         pillImg.color  = on ? _accentGreen : new Color(0.25f, 0.25f, 0.25f, 1f);
         pillImg.sprite = CreateRoundedSprite(14);
@@ -1301,13 +1260,13 @@ public class SettingsMenu : MonoBehaviour
         ttRT.anchorMin        = on ? new Vector2(1f, 0.5f) : new Vector2(0f, 0.5f);
         ttRT.anchorMax        = on ? new Vector2(1f, 0.5f) : new Vector2(0f, 0.5f);
         ttRT.pivot            = new Vector2(0.5f, 0.5f);
-        ttRT.anchoredPosition = new Vector2(on ? -16f : 16f, 0f);
-        ttRT.sizeDelta        = new Vector2(22f, 22f);
+        ttRT.anchoredPosition = new Vector2(on ? -18f : 18f, 0f);
+        ttRT.sizeDelta        = new Vector2(28f, 28f);
         Image ttImg = tThumb.AddComponent<Image>();
         ttImg.color  = Color.white;
-        ttImg.sprite = CreateRoundedSprite(11);
+        ttImg.sprite = CreateRoundedSprite(14);
 
-        AddLabel(pill.transform, on ? "ON" : "OFF", 12,
+        AddLabel(pill.transform, on ? "ON" : "OFF", 14,
             on ? _catTextActive : new Color(0.6f, 0.6f, 0.6f, 1f));
     }
 
@@ -1829,10 +1788,31 @@ public class SettingsMenu : MonoBehaviour
     }
 
     // ──────────────────────────────────────────────
-    //  SHOW / HIDE PAUSE BUTTON
+    //  OPEN FROM PHONE
+    //  Dipanggil oleh PhoneUIBuilder saat item "Settings" di tap
     // ──────────────────────────────────────────────
-    public void HideSettingsButton() { if (_pauseButton) _pauseButton.SetActive(false); }
-    public void ShowSettingsButton() { if (_pauseButton) _pauseButton.SetActive(true);  }
+    public void OpenFromPhone()
+    {
+        if (!_isSettingsOpen)
+            ToggleSettings();
+    }
+
+    // ──────────────────────────────────────────────
+    //  OPEN MAP TAB
+    //  Dipanggil oleh MinimapSystem saat minimap di-tap
+    // ──────────────────────────────────────────────
+    public void OpenMapTab()
+    {
+        if (!_isSettingsOpen)
+            ToggleSettings();
+        // Tab 0 = MAP
+        SwitchTab(0);
+    }
+
+    // HideSettingsButton / ShowSettingsButton dipertahankan sebagai stub
+    // supaya script lain yang mungkin memanggil metode ini tidak error.
+    public void HideSettingsButton() { }
+    public void ShowSettingsButton() { }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
