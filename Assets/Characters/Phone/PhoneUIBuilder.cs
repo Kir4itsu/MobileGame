@@ -1136,6 +1136,14 @@ public class PhoneUIBuilder : MonoBehaviour
         _galleryManager.phoneManager   = _phoneManager;
         _galleryManager.phoneNavigator = _phoneNavigator;
 
+        // FIX: Bangun GalleryPanel sekarang dengan parent PhoneScreen yang benar,
+        // bukan lazy-build di OpenGallery() dengan GameObject.Find yang tidak reliable.
+        var phoneScreen = _phoneUI?.transform.Find("PhoneScreen");
+        if (phoneScreen != null)
+            _galleryManager.InitGalleryPanel(phoneScreen);
+        else
+            Debug.LogWarning("[PhoneUIBuilder] PhoneScreen tidak ditemukan — GalleryPanel tidak bisa dibangun!");
+
         _cameraMode.galleryManager = _galleryManager;
 
         Debug.Log("[PhoneUIBuilder] Semua script sudah di-wire!");

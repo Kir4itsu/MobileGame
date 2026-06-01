@@ -60,6 +60,18 @@ public class GalleryManager : MonoBehaviour
     //  PUBLIC API
     // ═════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Dipanggil dari PhoneUIBuilder.WireScripts() dengan parent PhoneScreen yang benar.
+    /// Ini memastikan GalleryPanel ada dalam hierarchy yang sama dengan HomePanel dan MusicPanel,
+    /// sehingga PhoneNavigator bisa switch antar panel dengan benar.
+    /// </summary>
+    public void InitGalleryPanel(Transform screenParent)
+    {
+        if (_galleryPanel != null) return; // sudah dibangun
+        BuildGalleryPanel(screenParent);
+        Debug.Log("[GalleryManager] GalleryPanel dibangun oleh PhoneUIBuilder.");
+    }
+
     /// <summary>Tambah foto baru ke galeri in-game. Dipanggil oleh CameraMode.</summary>
     public void AddPhoto(Texture2D tex, string fileName)
     {
@@ -82,6 +94,9 @@ public class GalleryManager : MonoBehaviour
     {
         if (_galleryPanel == null)
             BuildGalleryPanel();
+
+        // Aktifkan panel dulu sebelum RefreshGrid agar LayoutRebuilder bekerja benar
+        _galleryPanel.SetActive(true);
 
         // Buka phone dulu jika belum
         if (phoneManager != null && !phoneManager.IsPhoneOpen)
@@ -106,13 +121,21 @@ public class GalleryManager : MonoBehaviour
     // ═════════════════════════════════════════════════════════════
     //  BUILD GALLERY PANEL (di dalam phone screen)
     // ═════════════════════════════════════════════════════════════
-    void BuildGalleryPanel()
+    void BuildGalleryPanel(Transform forcedParent = null)
     {
-        // Cari PhoneScreen sebagai parent
-        var phoneScreen = GameObject.Find("PhoneScreen");
-        Transform screenParent = phoneScreen != null
-            ? phoneScreen.transform
-            : _canvas.transform;
+        // FIX: Gunakan forcedParent jika disediakan (dari PhoneUIBuilder).
+        // Ini memastikan panel ada di hierarchy yang sama dengan HomePanel/MusicPanel
+        // sehingga PhoneNavigator bisa switch antar panel dengan benar.
+        Transform screenParent;
+        if (forcedParent != null)
+        {
+            screenParent = forcedParent;
+        }
+        else
+        {
+            var phoneScreen = GameObject.Find("PhoneScreen");
+            screenParent = phoneScreen != null ? phoneScreen.transform : _canvas.transform;
+        }
 
         _galleryPanel = new GameObject("GalleryPanel");
         _galleryPanel.transform.SetParent(screenParent, false);
@@ -260,9 +283,11 @@ public class GalleryManager : MonoBehaviour
     {
         if (_gridContent == null) return;
 
-        // Hapus item lama
+        // FIX: Gunakan DestroyImmediate agar child lama benar-benar hilang sebelum
+        // child baru dibuat di frame yang sama. Destroy() bersifat deferred (akhir frame)
+        // sehingga GridLayoutGroup masih menghitung child lama → thumbnail tidak muncul.
         for (int i = _gridContent.childCount - 1; i >= 0; i--)
-            Destroy(_gridContent.GetChild(i).gameObject);
+            DestroyImmediate(_gridContent.GetChild(i).gameObject);
 
         // Update label kosong
         var emptyLabel = _galleryPanel.transform.Find("EmptyLabel");

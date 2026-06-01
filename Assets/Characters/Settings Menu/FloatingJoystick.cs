@@ -267,31 +267,41 @@ public class FloatingJoystick : MonoBehaviour
             {
                 _joystickFingerId = touch.fingerId;
 
-                // Pindahkan background ke posisi jari (screen → canvas local)
-                Vector2 localPos;
-                RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    (RectTransform)_background.parent,
-                    touch.position,
-                    null,
-                    out localPos);
-                _background.anchoredPosition = localPos;
-                _joystickSpawnPos            = touch.position;
-
-                // Tampilkan joystick
+                // Aktifkan dulu sebelum konversi koordinat
                 _background.gameObject.SetActive(true);
                 _joystickVisible = true;
                 _handle.anchoredPosition = Vector2.zero;
+
+                // FIX: Konversi touch position (screen space, origin bottom-left) ke
+                // anchoredPosition canvas units menggunakan scaleFactor.
+                // ScreenPointToLocalPointInRectangle tidak reliable di Unity Remote / Editor
+                // karena canvas layout belum tentu ter-update di frame yang sama.
+                float sf = _canvas.scaleFactor > 0.001f ? _canvas.scaleFactor : 1f;
+                _background.anchoredPosition = touch.position / sf;
+
+                // Simpan posisi jari dalam SCREEN SPACE — lebih reliable lintas semua CanvasScaler
+                _joystickSpawnPos = touch.position;
             }
 
             if (touch.fingerId != _joystickFingerId) continue;
 
             if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary)
             {
-                float maxRange   = (_background.sizeDelta.x * 0.5f) - (handleSize * 0.5f);
-                Vector2 clamped  = Vector2.ClampMagnitude(touch.position - _joystickSpawnPos, maxRange);
+                // Hitung delta dalam screen pixels dari titik spawn awal
+                Vector2 screenDelta = touch.position - _joystickSpawnPos;
+
+                // FIX: Gunakan Canvas.scaleFactor untuk konversi screen pixels → canvas units.
+                // Cara lama (GetWorldCorners) tidak reliable karena corners belum ter-update
+                // di frame yang sama setelah background baru di-SetActive/dipindah,
+                // sehingga menghasilkan skala yang salah dan handle melompat ke posisi keliru.
+                float sf        = _canvas.scaleFactor > 0.001f ? _canvas.scaleFactor : 1f;
+                Vector2 delta   = screenDelta / sf;
+                float maxRange  = (_background.sizeDelta.x * 0.5f) - (handleSize * 0.5f);
+                Vector2 clamped = Vector2.ClampMagnitude(delta, maxRange);
+
                 _handle.anchoredPosition = clamped;
-                Horizontal = clamped.x / maxRange;
-                Vertical   = clamped.y / maxRange;
+                Horizontal = maxRange > 0f ? clamped.x / maxRange : 0f;
+                Vertical   = maxRange > 0f ? clamped.y / maxRange : 0f;
             }
             else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
             {
@@ -1313,8 +1323,18 @@ public class FloatingJoystick : MonoBehaviour
         RectTransform[] buttons = { _rtSprint, _rtInteract, _rtViewToggle, _rtPhone };
         foreach (var rt in buttons)
         {
-            if (rt == null || !rt.gameObject.activeSelf) continue;
-            if (RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null))
+            if (rt == null || !rt.gameObject.activeInHierarchy) continue;
+            // FIX ANDROID: pakai GetWorldCorners (sama seperti IsTouchOverExternalUI)
+            // karena RectangleContainsScreenPoint dengan camera=null bisa meleset
+            // di Android dengan CanvasScaler aktif.
+            Vector3[] corners = new Vector3[4];
+            rt.GetWorldCorners(corners);
+            float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+            float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+            float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+            float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+            if (screenPos.x >= minX && screenPos.x <= maxX &&
+                screenPos.y >= minY && screenPos.y <= maxY)
                 return true;
         }
         return false;

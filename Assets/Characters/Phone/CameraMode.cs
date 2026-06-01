@@ -58,6 +58,15 @@ public class CameraMode : MonoBehaviour
     private FilterType _currentFilter = FilterType.Normal;
     private Button[]   _filterButtons;
 
+    // ── Zoom ──────────────────────────────────────────────────────
+    private float  _baseFOV        = 60f;   // FOV normal (disimpan saat OpenCamera)
+    private float  _currentZoom    = 1f;    // 1x = normal, 5x = max
+    private const float ZOOM_MIN   = 1f;
+    private const float ZOOM_MAX   = 5f;
+    private float  _pinchPrevDist  = 0f;
+    private Text   _zoomLabel;             // label "1.0x" di InfoBar
+    private Text   _zoomValueText;         // alias ke _zoomLabel
+
     // ── Timer ─────────────────────────────────────────────────────
     private int[]  _timerOptions = { 0, 3, 5, 10 };
     private int    _timerIndex   = 0;
@@ -85,6 +94,11 @@ public class CameraMode : MonoBehaviour
     {
         if (playerCamera == null)
             playerCamera = Camera.main;
+
+        // FIX: Jika galleryManager tidak di-assign dari inspector/PhoneUIBuilder,
+        // cari otomatis agar foto tidak hilang saat AddPhoto() dipanggil.
+        if (galleryManager == null)
+            galleryManager = FindFirstObjectByType<GalleryManager>();
     }
 
     void Update()
@@ -100,6 +114,39 @@ public class CameraMode : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Escape))
             CloseCamera();
+
+        // ── Zoom: pinch gesture (Android) atau scroll wheel (PC) ──
+        HandleZoomInput();
+    }
+
+    void HandleZoomInput()
+    {
+        // PC: scroll wheel
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        if (Mathf.Abs(scroll) > 0.001f)
+        {
+            SetZoom(_currentZoom - scroll * 3f);
+            return;
+        }
+
+        // Android: pinch to zoom (2 jari)
+        if (Input.touchCount == 2)
+        {
+            Touch t0 = Input.GetTouch(0);
+            Touch t1 = Input.GetTouch(1);
+            float dist = Vector2.Distance(t0.position, t1.position);
+
+            if (t1.phase == TouchPhase.Began)
+            {
+                _pinchPrevDist = dist;
+                return;
+            }
+
+            float delta = dist - _pinchPrevDist;
+            _pinchPrevDist = dist;
+            // Sensitifitas pinch: gerak 100px = zoom 0.5x
+            SetZoom(_currentZoom - delta * 0.005f);
+        }
     }
 
     void OnDestroy()
@@ -132,8 +179,17 @@ public class CameraMode : MonoBehaviour
         if (MinimapSystem.Instance != null)
             MinimapSystem.Instance.HideMinimap();
 
+        // Pastikan tetap landscape saat kamera terbuka
+        // Tidak perlu set ulang jika game sudah full landscape
+        // tapi set eksplisit untuk jaga-jaga device auto-rotate
         Screen.orientation = ScreenOrientation.LandscapeLeft;
         SetupViewfinder();
+
+        // Simpan FOV awal untuk kalkulasi zoom
+        if (_viewfinderCam != null)
+            _baseFOV = _viewfinderCam.fieldOfView;
+        ResetZoom();
+
         ApplyFilter(_currentFilter);
 
         _isOpen = true;
@@ -151,6 +207,7 @@ public class CameraMode : MonoBehaviour
         RestoreTimeScale();
         _slowMoActive = false;
         RefreshSlowMoButton();
+        ResetZoom();
 
         _cameraOverlay?.SetActive(false);
         CleanupViewfinder();
@@ -161,7 +218,9 @@ public class CameraMode : MonoBehaviour
         if (MinimapSystem.Instance != null)
             MinimapSystem.Instance.ShowMinimap();
 
-        Screen.orientation = ScreenOrientation.Portrait;
+        // FIX: jangan paksa Portrait saat tutup kamera — game ini full landscape!
+        // Kembalikan ke LandscapeLeft agar konsisten.
+        Screen.orientation = ScreenOrientation.LandscapeLeft;
 
         if (phoneManager?.phoneUI != null)
             phoneManager.phoneUI.SetActive(true);
@@ -210,6 +269,27 @@ public class CameraMode : MonoBehaviour
         Time.timeScale      = to;
         Time.fixedDeltaTime = 0.02f * to;
         _slowMoCo = null;
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  ZOOM
+    // ═════════════════════════════════════════════════════════════
+    void SetZoom(float zoom)
+    {
+        _currentZoom = Mathf.Clamp(zoom, ZOOM_MIN, ZOOM_MAX);
+        if (_viewfinderCam != null)
+            _viewfinderCam.fieldOfView = _baseFOV / _currentZoom;
+        if (_zoomLabel != null)
+            _zoomLabel.text = _currentZoom.ToString("F1") + "x";
+    }
+
+    void ResetZoom()
+    {
+        _currentZoom = 1f;
+        if (_viewfinderCam != null)
+            _viewfinderCam.fieldOfView = _baseFOV;
+        if (_zoomLabel != null)
+            _zoomLabel.text = "1.0x";
     }
 
     void RestoreTimeScale()
@@ -275,14 +355,35 @@ public class CameraMode : MonoBehaviour
     void RefreshFilterButtons()
     {
         if (_filterButtons == null) return;
-        var names = System.Enum.GetNames(typeof(FilterType));
-        for (int i = 0; i < _filterButtons.Length && i < names.Length; i++)
+        for (int i = 0; i < _filterButtons.Length; i++)
         {
             bool active = (FilterType)i == _currentFilter;
-            var img = _filterButtons[i].GetComponent<Image>();
-            var lbl = _filterButtons[i].GetComponentInChildren<Text>();
-            img.color = active ? new Color(0.30f, 1f, 0.47f, 0.18f) : new Color(0f, 0f, 0f, 0.60f);
-            if (lbl != null) lbl.color = active ? C_GREEN : C_GRAY;
+            var chip = _filterButtons[i].gameObject;
+
+            // Background chip
+            var img = chip.GetComponent<Image>();
+            if (img != null)
+                img.color = active
+                    ? new Color(0.30f, 1f, 0.47f, 0.20f)
+                    : new Color(0.08f, 0.08f, 0.08f, 0.95f);
+
+            // Outline border
+            var outline = chip.transform.Find("Outline");
+            if (outline != null)
+            {
+                var olImg = outline.GetComponent<Image>();
+                if (olImg != null)
+                    olImg.color = active
+                        ? new Color(0.30f, 1f, 0.47f, 0.55f)
+                        : new Color(1f, 1f, 1f, 0.08f);
+            }
+
+            // Label teks (Text pertama yang bukan dot)
+            foreach (var t in chip.GetComponentsInChildren<Text>())
+            {
+                t.color = active ? C_GREEN : C_GRAY;
+                break;
+            }
         }
     }
 
@@ -381,6 +482,10 @@ public class CameraMode : MonoBehaviour
         string fileName = "InGame_" + ts + ".png";
         byte[] bytes    = photo.EncodeToPNG();
         string path     = SavePhoto(bytes, fileName);
+
+        // FIX: Cari galleryManager lagi jika masih null (misal baru di-spawn setelah Awake)
+        if (galleryManager == null)
+            galleryManager = FindFirstObjectByType<GalleryManager>();
         galleryManager?.AddPhoto(photo, fileName);
 
         if (_lastPhotoThumb != null)
@@ -474,17 +579,16 @@ public class CameraMode : MonoBehaviour
         scaler.referencePixelsPerUnit = 100;
 
         // ── Viewfinder ────────────────────────────────────────────
-        // Atas: 60 TopBar + 28 InfoBar = 88px
-        // Bawah: 100 BottomBar + 44 FilterBar = 144px
+        // Atas: 56 TopBar + 24 InfoBar = 80px
+        // Bawah: 90 BottomBar + 52 FilterBar = 142px
         var pvGO = new GameObject("Viewfinder");
         pvGO.transform.SetParent(_cameraOverlay.transform, false);
         var pvRT = pvGO.AddComponent<RectTransform>();
         pvRT.anchorMin = Vector2.zero; pvRT.anchorMax = Vector2.one;
-        pvRT.offsetMin = new Vector2(0, 144);
-        pvRT.offsetMax = new Vector2(0, -88);
+        pvRT.offsetMin = new Vector2(0, 142);  // 90 BottomBar + 52 FilterBar
+        pvRT.offsetMax = new Vector2(0, -80);  // 56 TopBar + 24 InfoBar
         _preview = pvGO.AddComponent<RawImage>();
         _preview.color = Color.white;
-        // EnvelopeParent: viewfinder mengisi seluruh area yang tersedia tanpa letterbox
         var arf = pvGO.AddComponent<AspectRatioFitter>();
         arf.aspectMode  = AspectRatioFitter.AspectMode.EnvelopeParent;
         arf.aspectRatio = (float)RT_W / RT_H;
@@ -516,8 +620,8 @@ public class CameraMode : MonoBehaviour
         tbRT.anchorMin = new Vector2(0,1); tbRT.anchorMax = new Vector2(1,1);
         tbRT.pivot = new Vector2(0.5f,1);
         tbRT.anchoredPosition = Vector2.zero;
-        tbRT.sizeDelta = new Vector2(0, 60);
-        tb.AddComponent<Image>().color = C_BAR;
+        tbRT.sizeDelta = new Vector2(0, 56);  // lebih slim dari 60
+        tb.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.92f);
 
         // Border bawah
         var bln = new GameObject("BorderBottom");
@@ -552,12 +656,12 @@ public class CameraMode : MonoBehaviour
         var ibRT = ib.AddComponent<RectTransform>();
         ibRT.anchorMin = new Vector2(0,1); ibRT.anchorMax = new Vector2(1,1);
         ibRT.pivot = new Vector2(0.5f,1);
-        ibRT.anchoredPosition = new Vector2(0,-60); // tepat di bawah TopBar
-        ibRT.sizeDelta = new Vector2(0, 28);
-        ib.AddComponent<Image>().color = new Color(0,0,0,0.55f);
+        ibRT.anchoredPosition = new Vector2(0,-56); // tepat di bawah TopBar
+        ibRT.sizeDelta = new Vector2(0, 24);
+        ib.AddComponent<Image>().color = new Color(0,0,0,0.65f);
 
-        string[] labels   = { "RES", "FPS", "MODE", "FILTER" };
-        string[] defaults = { "1280x720", "60", "FPP", "NORMAL" };
+        string[] labels   = { "RES", "FPS", "ZOOM", "FILTER" };
+        string[] defaults = { "1280x720", "60", "1.0x", "NORMAL" };
         float step = 1f / labels.Length;
 
         for (int i = 0; i < labels.Length; i++)
@@ -581,6 +685,8 @@ public class CameraMode : MonoBehaviour
 
             if (labels[i] == "FILTER")
                 _filterStatusText = vGO.GetComponent<Text>();
+            if (labels[i] == "ZOOM")
+                _zoomLabel = vGO.GetComponent<Text>();
         }
     }
 
@@ -591,8 +697,8 @@ public class CameraMode : MonoBehaviour
         g.transform.SetParent(parent, false);
         var gRT = g.AddComponent<RectTransform>();
         gRT.anchorMin = Vector2.zero; gRT.anchorMax = Vector2.one;
-        gRT.offsetMin = new Vector2(0, 144);
-        gRT.offsetMax = new Vector2(0, -88);
+        gRT.offsetMin = new Vector2(0, 142);
+        gRT.offsetMax = new Vector2(0, -80);
         g.AddComponent<Image>().color = new Color(0,0,0,0);
         g.GetComponent<Image>().raycastTarget = false;
 
@@ -616,8 +722,8 @@ public class CameraMode : MonoBehaviour
     // ─────────────────────────────────────────────────────────────
     void BuildReticle(Transform parent)
     {
-        float sz = 20f, th = 2f, dist = 60f;
-        Color rc = new Color(0.30f, 1f, 0.47f, 0.9f);
+        float sz = 26f, th = 2.5f, dist = 56f;  // bracket lebih panjang, lebih tipis
+        Color rc = new Color(0.30f, 1f, 0.47f, 0.85f);
         var corners = new (Vector2 pos, Vector2 hOff, Vector2 vOff)[]
         {
             (new Vector2(-dist,  dist), new Vector2( sz/2,0), new Vector2(0,-sz/2)),
@@ -630,11 +736,12 @@ public class CameraMode : MonoBehaviour
             ReticleLine(parent, pos+hOff, new Vector2(sz,th), rc);
             ReticleLine(parent, pos+vOff, new Vector2(th,sz), rc);
         }
+        // Center dot — lebih kecil & subtle
         var dot = new GameObject("Dot"); dot.transform.SetParent(parent, false);
         var dRT = dot.AddComponent<RectTransform>();
         dRT.anchorMin = dRT.anchorMax = new Vector2(0.5f,0.5f);
-        dRT.pivot = new Vector2(0.5f,0.5f); dRT.anchoredPosition = Vector2.zero; dRT.sizeDelta = new Vector2(4,4);
-        dot.AddComponent<Image>().color = new Color(0.30f,1f,0.47f,0.7f);
+        dRT.pivot = new Vector2(0.5f,0.5f); dRT.anchoredPosition = Vector2.zero; dRT.sizeDelta = new Vector2(3,3);
+        dot.AddComponent<Image>().color = new Color(0.30f,1f,0.47f,0.55f);
         dot.GetComponent<Image>().raycastTarget = false;
     }
 
@@ -650,87 +757,115 @@ public class CameraMode : MonoBehaviour
     // ─────────────────────────────────────────────────────────────
     void BuildFilterBar(Transform parent)
     {
+        // Container bar — anchor ke bawah, tepat di atas BottomBar (100px)
         var fb = new GameObject("FilterBar");
         fb.transform.SetParent(parent, false);
         var fbRT = fb.AddComponent<RectTransform>();
         fbRT.anchorMin = new Vector2(0,0); fbRT.anchorMax = new Vector2(1,0);
         fbRT.pivot = new Vector2(0.5f,0);
-        fbRT.anchoredPosition = new Vector2(0, 100); // tepat di atas BottomBar
-        fbRT.sizeDelta = new Vector2(0, 44);
+        fbRT.anchoredPosition = new Vector2(0, 90);
+        fbRT.sizeDelta = new Vector2(0, 52);
+        fb.AddComponent<Image>().color = new Color(0.02f, 0.02f, 0.02f, 0.92f);
 
+        // Border atas tipis
+        var borderTop = new GameObject("BorderTop");
+        borderTop.transform.SetParent(fb.transform, false);
+        var btRT = borderTop.AddComponent<RectTransform>();
+        btRT.anchorMin = new Vector2(0,1); btRT.anchorMax = new Vector2(1,1);
+        btRT.pivot = new Vector2(0.5f,1); btRT.anchoredPosition = Vector2.zero;
+        btRT.sizeDelta = new Vector2(0,1);
+        borderTop.AddComponent<Image>().color = C_BORDER;
+        borderTop.GetComponent<Image>().raycastTarget = false;
+
+        // HorizontalLayoutGroup langsung di bar
+        // 7 filter × ~80px + spacing = pas di 720px
         var hlg = fb.AddComponent<HorizontalLayoutGroup>();
-        hlg.childAlignment = TextAnchor.MiddleCenter;
-        hlg.spacing = 6; hlg.padding = new RectOffset(10,10,0,0);
-        hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
+        hlg.childAlignment       = TextAnchor.MiddleCenter;
+        hlg.spacing              = 4;
+        hlg.padding              = new RectOffset(8, 8, 4, 4);
+        hlg.childForceExpandWidth  = true;   // chip melebar rata mengisi bar
+        hlg.childForceExpandHeight = true;
 
+        // ── Chips ────────────────────────────────────────────────
         var names = System.Enum.GetNames(typeof(FilterType));
         _filterButtons = new Button[names.Length];
+
+        Color[] dotColors = {
+            new Color(1f,   1f,   1f,   0.9f),   // Normal  — putih
+            new Color(0.2f, 0.2f, 0.2f, 0.9f),   // Noir    — hitam
+            new Color(0.85f,0.60f,0.30f,0.9f),   // Sepia   — coklat
+            new Color(1f,   0.30f,0.80f,0.9f),   // Vivid   — pink
+            new Color(0.30f,0.70f,1f,   0.9f),   // Cool    — biru
+            new Color(1f,   0.55f,0.10f,0.9f),   // Warm    — oranye
+            new Color(0.70f,0.70f,0.70f,0.55f),  // Fade    — abu transparan
+        };
 
         for (int i = 0; i < names.Length; i++)
         {
             int idx = i;
+            bool isActive = (i == 0);
+
             var chip = new GameObject("Chip_" + names[i]);
             chip.transform.SetParent(fb.transform, false);
-            var chipRT = chip.AddComponent<RectTransform>();
-            chipRT.sizeDelta = new Vector2(56, 36);
+            // LayoutElement: biarkan HLG yang atur lebar
+            var le = chip.AddComponent<LayoutElement>();
+            le.preferredHeight = 48;
 
             var chipImg = chip.AddComponent<Image>();
-            chipImg.color = i == 0 ? new Color(0.30f,1f,0.47f,0.18f) : new Color(0,0,0,0.60f);
-            var chipBtn = chip.AddComponent<Button>(); chipBtn.targetGraphic = chipImg;
+            chipImg.color = isActive
+                ? new Color(0.30f, 1f, 0.47f, 0.20f)
+                : new Color(0.08f, 0.08f, 0.08f, 0.95f);
+
+            var chipBtn = chip.AddComponent<Button>();
+            chipBtn.targetGraphic = chipImg;
             var chipCB = chipBtn.colors;
-            chipCB.pressedColor = new Color(0.30f,1f,0.47f,0.30f); chipBtn.colors = chipCB;
+            chipCB.pressedColor     = new Color(0.30f, 1f, 0.47f, 0.40f);
+            chipCB.highlightedColor = new Color(0.20f, 0.60f, 0.35f, 0.25f);
+            chipBtn.colors = chipCB;
             chipBtn.onClick.AddListener(() => ApplyFilter((FilterType)idx));
 
-            // Border chip
-            var bo = new GameObject("Bo"); bo.transform.SetParent(chip.transform, false);
-            FullAnchor(bo.AddComponent<RectTransform>());
-            bo.GetComponent<RectTransform>().offsetMin = new Vector2(-1,-1);
-            bo.GetComponent<RectTransform>().offsetMax = new Vector2(1,1);
-            bo.AddComponent<Image>().color = i == 0 ? new Color(0.30f,1f,0.47f,0.5f) : new Color(1,1,1,0.15f);
-            bo.transform.SetAsFirstSibling();
+            // Outline (border chip)
+            var outline = new GameObject("Outline");
+            outline.transform.SetParent(chip.transform, false);
+            FullAnchor(outline.AddComponent<RectTransform>());
+            outline.GetComponent<RectTransform>().offsetMin = new Vector2(-1,-1);
+            outline.GetComponent<RectTransform>().offsetMax = new Vector2( 1, 1);
+            outline.AddComponent<Image>().color = isActive
+                ? new Color(0.30f, 1f, 0.47f, 0.55f)
+                : new Color(1f, 1f, 1f, 0.08f);
+            outline.transform.SetAsFirstSibling();
 
-            // ── Dot icon (shape) ─────────────────────────────────
-            // Tiap filter punya dot warna berbeda sebagai penanda visual
-            Color[] dotColors = {
-                new Color(1f,   1f,   1f,   0.9f),   // Normal  — putih
-                new Color(0.2f, 0.2f, 0.2f, 0.9f),   // Noir    — hitam
-                new Color(0.85f,0.60f,0.30f,0.9f),   // Sepia   — coklat
-                new Color(1f,   0.30f,0.80f,0.9f),   // Vivid   — pink
-                new Color(0.30f,0.70f,1f,   0.9f),   // Cool    — biru
-                new Color(1f,   0.55f,0.10f,0.9f),   // Warm    — oranye
-                new Color(0.70f,0.70f,0.70f,0.55f),  // Fade    — abu transparan
-            };
+            // Dot warna filter (lingkaran simulasi)
             Color dc = i < dotColors.Length ? dotColors[i] : C_WHITE;
-
-            // Dot center + 4 satelit → siluet lingkaran dari Image squares
+            // Center square
             var dotC = new GameObject("DotC"); dotC.transform.SetParent(chip.transform, false);
             var dotCRT = dotC.AddComponent<RectTransform>();
-            dotCRT.anchorMin = dotCRT.anchorMax = new Vector2(0.5f, 0.72f);
-            dotCRT.pivot = new Vector2(0.5f, 0.5f);
+            dotCRT.anchorMin = dotCRT.anchorMax = new Vector2(0.5f, 0.68f);
+            dotCRT.pivot = new Vector2(0.5f,0.5f);
             dotCRT.anchoredPosition = Vector2.zero;
-            dotCRT.sizeDelta = new Vector2(8, 8);
+            dotCRT.sizeDelta = new Vector2(8,8);
             dotC.AddComponent<Image>().color = dc;
             dotC.GetComponent<Image>().raycastTarget = false;
-
-            Vector2[] offsets = { new Vector2(0,5), new Vector2(0,-5), new Vector2(5,0), new Vector2(-5,0) };
-            foreach (var off in offsets)
+            // 4 satelit
+            Vector2[] sats = { new Vector2(0,5.5f), new Vector2(0,-5.5f), new Vector2(5.5f,0), new Vector2(-5.5f,0) };
+            foreach (var off in sats)
             {
                 var ds = new GameObject("DS"); ds.transform.SetParent(chip.transform, false);
                 var dsRT = ds.AddComponent<RectTransform>();
-                dsRT.anchorMin = dsRT.anchorMax = new Vector2(0.5f, 0.72f);
-                dsRT.pivot = new Vector2(0.5f, 0.5f);
+                dsRT.anchorMin = dsRT.anchorMax = new Vector2(0.5f, 0.68f);
+                dsRT.pivot = new Vector2(0.5f,0.5f);
                 dsRT.anchoredPosition = off;
-                dsRT.sizeDelta = new Vector2(5, 5);
+                dsRT.sizeDelta = new Vector2(4.5f,4.5f);
                 ds.AddComponent<Image>().color = dc;
                 ds.GetComponent<Image>().raycastTarget = false;
             }
 
-            // Label nama filter di bawah dot
+            // Label nama filter
             var chipLbl = MakeText(chip.transform, names[i].ToUpper(), 9,
-                i == 0 ? C_GREEN : C_GRAY, TextAnchor.LowerCenter, FontStyle.Bold);
+                isActive ? C_GREEN : C_GRAY, TextAnchor.LowerCenter, FontStyle.Bold);
             var clRT = chipLbl.GetComponent<RectTransform>();
-            clRT.anchorMin = new Vector2(0, 0); clRT.anchorMax = new Vector2(1, 0.48f);
-            clRT.offsetMin = clRT.offsetMax = Vector2.zero;
+            clRT.anchorMin = new Vector2(0, 0); clRT.anchorMax = new Vector2(1, 0.38f);
+            clRT.offsetMin = new Vector2(0,2); clRT.offsetMax = Vector2.zero;
 
             _filterButtons[i] = chipBtn;
         }
@@ -744,8 +879,8 @@ public class CameraMode : MonoBehaviour
         var bbRT = bb.AddComponent<RectTransform>();
         bbRT.anchorMin = new Vector2(0,0); bbRT.anchorMax = new Vector2(1,0);
         bbRT.pivot = new Vector2(0.5f,0); bbRT.anchoredPosition = Vector2.zero;
-        bbRT.sizeDelta = new Vector2(0, 100);
-        bb.AddComponent<Image>().color = C_BAR;
+        bbRT.sizeDelta = new Vector2(0, 90);
+        bb.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.92f);
 
         // Border atas
         var topLine = new GameObject("BorderTop");
@@ -784,24 +919,92 @@ public class CameraMode : MonoBehaviour
         var glRT = _galLabel.GetComponent<RectTransform>();
         glRT.anchorMin = Vector2.zero; glRT.anchorMax = Vector2.one; glRT.offsetMin = glRT.offsetMax = Vector2.zero;
 
-        // ── SHUTTER (tengah) ──────────────────────────────────────
+        // ── SHUTTER (tengah) — lingkaran putih dengan ring neon hijau ──
+        // Ring luar (neon green glow)
+        var ringOuter = new GameObject("RingOuter"); ringOuter.transform.SetParent(bb.transform, false);
+        var ringOuterRT = ringOuter.AddComponent<RectTransform>();
+        ringOuterRT.anchorMin = ringOuterRT.anchorMax = new Vector2(0.5f,0.5f);
+        ringOuterRT.pivot = new Vector2(0.5f,0.5f); ringOuterRT.anchoredPosition = Vector2.zero;
+        ringOuterRT.sizeDelta = new Vector2(86,86);
+        ringOuter.AddComponent<Image>().color = new Color(0.30f,1f,0.47f,0.18f);
+        ringOuter.GetComponent<Image>().raycastTarget = false;
+
+        // Ring tengah (border neon tebal)
         var ring = new GameObject("Ring"); ring.transform.SetParent(bb.transform, false);
         var ringRT = ring.AddComponent<RectTransform>();
         ringRT.anchorMin = ringRT.anchorMax = new Vector2(0.5f,0.5f);
         ringRT.pivot = new Vector2(0.5f,0.5f); ringRT.anchoredPosition = Vector2.zero;
-        ringRT.sizeDelta = new Vector2(78,78);
-        ring.AddComponent<Image>().color = new Color(0.30f,1f,0.47f,0.25f);
+        ringRT.sizeDelta = new Vector2(76,76);
+        ring.AddComponent<Image>().color = new Color(0.30f,1f,0.47f,0.55f);
         ring.GetComponent<Image>().raycastTarget = false;
 
         var shGO = new GameObject("Shutter"); shGO.transform.SetParent(bb.transform, false);
         var shRT = shGO.AddComponent<RectTransform>();
         shRT.anchorMin = shRT.anchorMax = new Vector2(0.5f,0.5f);
         shRT.pivot = new Vector2(0.5f,0.5f); shRT.anchoredPosition = Vector2.zero;
-        shRT.sizeDelta = new Vector2(62,62);
+        shRT.sizeDelta = new Vector2(66,66);
         var shImg = shGO.AddComponent<Image>(); shImg.color = Color.white;
         var shBtn = shGO.AddComponent<Button>(); shBtn.targetGraphic = shImg;
-        var shCB = shBtn.colors; shCB.pressedColor = new Color(0.5f,0.5f,0.5f,1); shBtn.colors = shCB;
+        var shCB = shBtn.colors;
+        shCB.pressedColor = new Color(0.70f,0.70f,0.70f,1f);
+        shCB.highlightedColor = new Color(0.95f,1f,0.97f,1f);
+        shBtn.colors = shCB;
         shBtn.onClick.AddListener(TakePhoto);
+
+        // ── ZOOM +/- (kiri dari shutter) ─────────────────────────
+        // Dua tombol kecil bertumpuk: [+] atas, [-] bawah
+        var zoomGO = new GameObject("ZoomBtns");
+        zoomGO.transform.SetParent(bb.transform, false);
+        var zoomRT = zoomGO.AddComponent<RectTransform>();
+        zoomRT.anchorMin = new Vector2(0,0.5f); zoomRT.anchorMax = new Vector2(0,0.5f);
+        zoomRT.pivot = new Vector2(0,0.5f);
+        zoomRT.anchoredPosition = new Vector2(88, 0);
+        zoomRT.sizeDelta = new Vector2(44, 68);
+
+        // Tombol Zoom IN (+)
+        var zInGO = new GameObject("ZoomIn");
+        zInGO.transform.SetParent(zoomGO.transform, false);
+        var zInRT = zInGO.AddComponent<RectTransform>();
+        zInRT.anchorMin = new Vector2(0,0.5f); zInRT.anchorMax = new Vector2(1,1);
+        zInRT.offsetMin = new Vector2(0,2); zInRT.offsetMax = Vector2.zero;
+        var zInImg = zInGO.AddComponent<Image>(); zInImg.color = new Color(0.10f,0.10f,0.10f,1f);
+        var zInBtn = zInGO.AddComponent<Button>(); zInBtn.targetGraphic = zInImg;
+        var zInCB = zInBtn.colors; zInCB.pressedColor = new Color(0.30f,1f,0.47f,0.25f); zInBtn.colors = zInCB;
+        zInBtn.onClick.AddListener(() => SetZoom(_currentZoom + 0.5f));
+        MakeText(zInGO.transform, "+", 20, C_GREEN, TextAnchor.MiddleCenter, FontStyle.Bold)
+            .GetComponent<RectTransform>().anchorMin = Vector2.zero;
+        var zInLbl = zInGO.GetComponentInChildren<Text>();
+        var zInLblRT = zInLbl.GetComponent<RectTransform>();
+        zInLblRT.anchorMin = Vector2.zero; zInLblRT.anchorMax = Vector2.one;
+        zInLblRT.offsetMin = zInLblRT.offsetMax = Vector2.zero;
+        // Border
+        var zInBo = new GameObject("Bo"); zInBo.transform.SetParent(zInGO.transform, false);
+        FullAnchor(zInBo.AddComponent<RectTransform>());
+        zInBo.GetComponent<RectTransform>().offsetMin = new Vector2(-1,-1);
+        zInBo.GetComponent<RectTransform>().offsetMax = new Vector2(1,1);
+        zInBo.AddComponent<Image>().color = new Color(0.30f,1f,0.47f,0.20f);
+        zInBo.transform.SetAsFirstSibling();
+
+        // Tombol Zoom OUT (-)
+        var zOutGO = new GameObject("ZoomOut");
+        zOutGO.transform.SetParent(zoomGO.transform, false);
+        var zOutRT = zOutGO.AddComponent<RectTransform>();
+        zOutRT.anchorMin = new Vector2(0,0); zOutRT.anchorMax = new Vector2(1,0.5f);
+        zOutRT.offsetMin = Vector2.zero; zOutRT.offsetMax = new Vector2(0,-2);
+        var zOutImg = zOutGO.AddComponent<Image>(); zOutImg.color = new Color(0.10f,0.10f,0.10f,1f);
+        var zOutBtn = zOutGO.AddComponent<Button>(); zOutBtn.targetGraphic = zOutImg;
+        var zOutCB = zOutBtn.colors; zOutCB.pressedColor = new Color(0.30f,1f,0.47f,0.25f); zOutBtn.colors = zOutCB;
+        zOutBtn.onClick.AddListener(() => SetZoom(_currentZoom - 0.5f));
+        var zOutLblGO = MakeText(zOutGO.transform, "−", 20, C_WHITE, TextAnchor.MiddleCenter, FontStyle.Bold);
+        var zOutLblRT = zOutLblGO.GetComponent<RectTransform>();
+        zOutLblRT.anchorMin = Vector2.zero; zOutLblRT.anchorMax = Vector2.one;
+        zOutLblRT.offsetMin = zOutLblRT.offsetMax = Vector2.zero;
+        var zOutBo = new GameObject("Bo"); zOutBo.transform.SetParent(zOutGO.transform, false);
+        FullAnchor(zOutBo.AddComponent<RectTransform>());
+        zOutBo.GetComponent<RectTransform>().offsetMin = new Vector2(-1,-1);
+        zOutBo.GetComponent<RectTransform>().offsetMax = new Vector2(1,1);
+        zOutBo.AddComponent<Image>().color = new Color(1f,1f,1f,0.10f);
+        zOutBo.transform.SetAsFirstSibling();
 
         // ── SLOWMO (kanan-kiri dari timer) ─────────────────────────
         // Layout kanan: [SLOWMO] [TIMER]
