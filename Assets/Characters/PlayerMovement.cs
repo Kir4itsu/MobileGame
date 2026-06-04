@@ -7,8 +7,12 @@ public class PlayerMovement : MonoBehaviour
     public float runSpeed = 6f;
     public float rotationSpeed = 10f;
     public float gravity = -30f;
-    public float groundCheckDistance = 0.5f;
+    public float groundCheckDistance = 0.8f;
     public LayerMask groundLayer = -1;
+
+    [Header("Door Push")]
+    public float doorPushDistance = 1.2f;
+    public LayerMask doorLayer;
 
     [Header("References")]
     public Transform cameraTransform;
@@ -17,12 +21,12 @@ public class PlayerMovement : MonoBehaviour
     [Header("Mobile Sprint Button (opsional)")]
     public UnityEngine.UI.Button sprintButton;
 
-    // Private
     private CharacterController controller;
     private CameraController cameraController;
     private float verticalVelocity = 0f;
     private bool isGrounded;
     private bool isMobileSprinting = false;
+    private Vector3 lastMoveDirection = Vector3.zero;
 
     void Start()
     {
@@ -36,11 +40,10 @@ public class PlayerMovement : MonoBehaviour
         SetupCamera();
         SetupSprintButton();
         gameObject.tag = "Player";
+
+        Debug.Log($"[PlayerMovement] Start — doorLayer={doorLayer.value}");
     }
 
-    // ─────────────────────────────────────────────
-    //  SETUP
-    // ─────────────────────────────────────────────
     void SetupCamera()
     {
         if (cameraTransform == null)
@@ -104,12 +107,8 @@ public class PlayerMovement : MonoBehaviour
         trigger.triggers.Add(up);
     }
 
-    // ─────────────────────────────────────────────
-    //  UPDATE
-    // ─────────────────────────────────────────────
     void Update()
     {
-        // ── Input ─────────────────────────────────
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");
 
@@ -123,14 +122,12 @@ public class PlayerMovement : MonoBehaviour
         h = inputVec.x;
         v = inputVec.y;
 
-        // ── Sprint ────────────────────────────────
         bool isSprinting = Input.GetKey(KeyCode.LeftShift)
                         || Input.GetKey(KeyCode.RightShift)
                         || isMobileSprinting
                         || (FloatingJoystick.Instance != null && FloatingJoystick.Instance.SprintHeld);
         float currentSpeed = isSprinting ? runSpeed : walkSpeed;
 
-        // ── Camera ────────────────────────────────
         bool isFPP = (cameraController != null && cameraController.isFirstPerson);
 
         if (cameraTransform == null)
@@ -155,7 +152,6 @@ public class PlayerMovement : MonoBehaviour
         }
 
         Vector3 moveDirection;
-
         if (isFPP)
         {
             Vector3 charForward = transform.forward;
@@ -171,19 +167,18 @@ public class PlayerMovement : MonoBehaviour
 
         bool isMoving = moveDirection.magnitude > 0.1f;
 
-        // ── Rotasi & Gerakan ──────────────────────
+        if (isMoving)
+            lastMoveDirection = moveDirection.normalized;
+
         if (isMoving)
         {
             if (isFPP)
-            {
                 transform.rotation = Quaternion.Euler(0, cameraTransform.eulerAngles.y, 0);
-            }
             else
             {
                 Quaternion targetRot = Quaternion.LookRotation(moveDirection.normalized);
                 transform.rotation  = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
             }
-
             controller.Move(moveDirection.normalized * currentSpeed * Time.deltaTime);
         }
         else if (isFPP)
@@ -203,13 +198,39 @@ public class PlayerMovement : MonoBehaviour
                      Physics.Raycast(rayStart + transform.right    * scaledRadius * 0.5f, Vector3.down, rayDist, groundLayer) ||
                      Physics.Raycast(rayStart - transform.right    * scaledRadius * 0.5f, Vector3.down, rayDist, groundLayer);
 
-        // ── Gravity ───────────────────────────────
         if (isGrounded && verticalVelocity < 0f)
             verticalVelocity = -2f;
         else
             verticalVelocity += gravity * Time.deltaTime;
 
         controller.Move(new Vector3(0, verticalVelocity, 0) * Time.deltaTime);
+
+        // ── Door Push via Raycast ─────────────────
+        if (isMoving)
+        {
+            float playerHeight   = controller.height * transform.localScale.y;
+            Vector3 origin       = transform.position + Vector3.up * (playerHeight * 0.5f);
+            float scaledPushDist = doorPushDistance * Mathf.Max(transform.localScale.x, transform.localScale.z);
+
+            Debug.DrawRay(origin, lastMoveDirection * scaledPushDist, Color.red);
+
+            // Cast dengan doorLayer — kalau 0 pakai semua layer
+            int layerToUse = (doorLayer.value != 0) ? doorLayer.value : ~0;
+
+            if (Physics.Raycast(origin, lastMoveDirection, out RaycastHit hit, scaledPushDist, layerToUse))
+            {
+                Debug.Log($"[DoorPush] Ray kena: {hit.collider.gameObject.name} layer={LayerMask.LayerToName(hit.collider.gameObject.layer)}");
+                PushDoor door = hit.collider.GetComponent<PushDoor>();
+                if (door != null)
+                {
+                    Debug.Log($"[DoorPush] PushDoor ditemukan! Mendorong...");
+                    Vector3 pushDir = hit.point - transform.position;
+                    pushDir.y = 0f;
+                    if (pushDir.magnitude > 0.01f)
+                        door.ReceivePush(pushDir.normalized);
+                }
+            }
+        }
 
         // ── Animator ──────────────────────────────
         if (animator != null)
@@ -231,23 +252,12 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    // ─────────────────────────────────────────────
-    //  UTILITIES
-    // ─────────────────────────────────────────────
+    void OnControllerColliderHit(ControllerColliderHit hit) { }
+
     public void SetFirstPersonVisibility(bool visible)
     {
         foreach (Renderer r in GetComponentsInChildren<Renderer>())
             r.enabled = visible;
-    }
-
-    void OnControllerColliderHit(ControllerColliderHit hit)
-    {
-        Rigidbody hitRb = hit.collider.attachedRigidbody;
-        if (hitRb == null || !hitRb.isKinematic) return;
-
-        Vector3 pushDir = hit.moveDirection;
-        pushDir.y = 0f;
-        controller.Move(-pushDir * 0.1f);
     }
 
     void OnGUI()
@@ -257,6 +267,7 @@ public class PlayerMovement : MonoBehaviour
             GUILayout.BeginArea(new Rect(10, 10, 300, 200));
             GUILayout.Label($"Position: {transform.position}");
             GUILayout.Label($"Grounded: {isGrounded}");
+            GUILayout.Label($"doorLayer: {doorLayer.value}");
             GUILayout.Label($"Joystick: {(FloatingJoystick.Instance != null ? "Connected" : "Not Found")}");
             GUILayout.EndArea();
         }

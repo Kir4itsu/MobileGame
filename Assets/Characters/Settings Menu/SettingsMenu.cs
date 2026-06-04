@@ -121,6 +121,10 @@ public class SettingsMenu : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.N))
             ToggleSettings();
 
+        // Shortcut U — buka langsung ke tab MAP
+        if (Input.GetKeyDown(KeyCode.U))
+            OpenMapTab();
+
         if (Input.GetKeyDown(KeyCode.Escape) && _isSettingsOpen)
             CloseSettings();
 

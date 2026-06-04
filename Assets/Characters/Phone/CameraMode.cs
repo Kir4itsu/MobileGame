@@ -599,6 +599,7 @@ public class CameraMode : MonoBehaviour
         BuildInfoBar(_cameraOverlay.transform);
         BuildFilterBar(_cameraOverlay.transform);
         BuildBottomBar(_cameraOverlay.transform);
+        BuildZoomButtons(_cameraOverlay.transform);
         BuildTimerCountdown(_cameraOverlay.transform);
 
         // ── Flash overlay ─────────────────────────────────────────
@@ -951,61 +952,6 @@ public class CameraMode : MonoBehaviour
         shBtn.colors = shCB;
         shBtn.onClick.AddListener(TakePhoto);
 
-        // ── ZOOM +/- (kiri dari shutter) ─────────────────────────
-        // Dua tombol kecil bertumpuk: [+] atas, [-] bawah
-        var zoomGO = new GameObject("ZoomBtns");
-        zoomGO.transform.SetParent(bb.transform, false);
-        var zoomRT = zoomGO.AddComponent<RectTransform>();
-        zoomRT.anchorMin = new Vector2(0,0.5f); zoomRT.anchorMax = new Vector2(0,0.5f);
-        zoomRT.pivot = new Vector2(0,0.5f);
-        zoomRT.anchoredPosition = new Vector2(88, 0);
-        zoomRT.sizeDelta = new Vector2(44, 68);
-
-        // Tombol Zoom IN (+)
-        var zInGO = new GameObject("ZoomIn");
-        zInGO.transform.SetParent(zoomGO.transform, false);
-        var zInRT = zInGO.AddComponent<RectTransform>();
-        zInRT.anchorMin = new Vector2(0,0.5f); zInRT.anchorMax = new Vector2(1,1);
-        zInRT.offsetMin = new Vector2(0,2); zInRT.offsetMax = Vector2.zero;
-        var zInImg = zInGO.AddComponent<Image>(); zInImg.color = new Color(0.10f,0.10f,0.10f,1f);
-        var zInBtn = zInGO.AddComponent<Button>(); zInBtn.targetGraphic = zInImg;
-        var zInCB = zInBtn.colors; zInCB.pressedColor = new Color(0.30f,1f,0.47f,0.25f); zInBtn.colors = zInCB;
-        zInBtn.onClick.AddListener(() => SetZoom(_currentZoom + 0.5f));
-        MakeText(zInGO.transform, "+", 20, C_GREEN, TextAnchor.MiddleCenter, FontStyle.Bold)
-            .GetComponent<RectTransform>().anchorMin = Vector2.zero;
-        var zInLbl = zInGO.GetComponentInChildren<Text>();
-        var zInLblRT = zInLbl.GetComponent<RectTransform>();
-        zInLblRT.anchorMin = Vector2.zero; zInLblRT.anchorMax = Vector2.one;
-        zInLblRT.offsetMin = zInLblRT.offsetMax = Vector2.zero;
-        // Border
-        var zInBo = new GameObject("Bo"); zInBo.transform.SetParent(zInGO.transform, false);
-        FullAnchor(zInBo.AddComponent<RectTransform>());
-        zInBo.GetComponent<RectTransform>().offsetMin = new Vector2(-1,-1);
-        zInBo.GetComponent<RectTransform>().offsetMax = new Vector2(1,1);
-        zInBo.AddComponent<Image>().color = new Color(0.30f,1f,0.47f,0.20f);
-        zInBo.transform.SetAsFirstSibling();
-
-        // Tombol Zoom OUT (-)
-        var zOutGO = new GameObject("ZoomOut");
-        zOutGO.transform.SetParent(zoomGO.transform, false);
-        var zOutRT = zOutGO.AddComponent<RectTransform>();
-        zOutRT.anchorMin = new Vector2(0,0); zOutRT.anchorMax = new Vector2(1,0.5f);
-        zOutRT.offsetMin = Vector2.zero; zOutRT.offsetMax = new Vector2(0,-2);
-        var zOutImg = zOutGO.AddComponent<Image>(); zOutImg.color = new Color(0.10f,0.10f,0.10f,1f);
-        var zOutBtn = zOutGO.AddComponent<Button>(); zOutBtn.targetGraphic = zOutImg;
-        var zOutCB = zOutBtn.colors; zOutCB.pressedColor = new Color(0.30f,1f,0.47f,0.25f); zOutBtn.colors = zOutCB;
-        zOutBtn.onClick.AddListener(() => SetZoom(_currentZoom - 0.5f));
-        var zOutLblGO = MakeText(zOutGO.transform, "−", 20, C_WHITE, TextAnchor.MiddleCenter, FontStyle.Bold);
-        var zOutLblRT = zOutLblGO.GetComponent<RectTransform>();
-        zOutLblRT.anchorMin = Vector2.zero; zOutLblRT.anchorMax = Vector2.one;
-        zOutLblRT.offsetMin = zOutLblRT.offsetMax = Vector2.zero;
-        var zOutBo = new GameObject("Bo"); zOutBo.transform.SetParent(zOutGO.transform, false);
-        FullAnchor(zOutBo.AddComponent<RectTransform>());
-        zOutBo.GetComponent<RectTransform>().offsetMin = new Vector2(-1,-1);
-        zOutBo.GetComponent<RectTransform>().offsetMax = new Vector2(1,1);
-        zOutBo.AddComponent<Image>().color = new Color(1f,1f,1f,0.10f);
-        zOutBo.transform.SetAsFirstSibling();
-
         // ── SLOWMO (kanan-kiri dari timer) ─────────────────────────
         // Layout kanan: [SLOWMO] [TIMER]
         // SLOWMO di x=0.62, TIMER di x=0.82 (normalized)
@@ -1130,6 +1076,84 @@ public class CameraMode : MonoBehaviour
         var ttRT = _timerBtnLabel.GetComponent<RectTransform>();
         ttRT.anchorMin = new Vector2(0, 0); ttRT.anchorMax = new Vector2(1, 0.28f);
         ttRT.offsetMin = ttRT.offsetMax = Vector2.zero;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Tombol Zoom IN/OUT — di kanan layar, tengah area viewfinder
+    // ─────────────────────────────────────────────────────────────
+    void BuildZoomButtons(Transform parent)
+    {
+        // Container: anchor kanan-tengah, di dalam area viewfinder
+        // Viewfinder: top offset -80, bottom offset 142 → center viewfinder
+        // di kiri = -52px dari kanan layar
+        var zoomGO = new GameObject("ZoomBtns");
+        zoomGO.transform.SetParent(parent, false);
+        var zoomRT = zoomGO.AddComponent<RectTransform>();
+        zoomRT.anchorMin = new Vector2(1f, 0.5f); zoomRT.anchorMax = new Vector2(1f, 0.5f);
+        zoomRT.pivot = new Vector2(1f, 0.5f);
+        // anchoredPosition.y = +31 agar berada di tengah viewfinder
+        // (viewfinder top=-80, bottom=142, net center = (142-80)/2 = 31px above screen center)
+        zoomRT.anchoredPosition = new Vector2(-12f, 31f);
+        zoomRT.sizeDelta = new Vector2(52f, 112f);
+
+        // Semi-transparent background panel untuk readability
+        var bgPanel = new GameObject("BgPanel");
+        bgPanel.transform.SetParent(zoomGO.transform, false);
+        FullAnchor(bgPanel.AddComponent<RectTransform>());
+        bgPanel.GetComponent<RectTransform>().offsetMin = new Vector2(-4, -4);
+        bgPanel.GetComponent<RectTransform>().offsetMax = new Vector2(4, 4);
+        bgPanel.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.45f);
+        bgPanel.GetComponent<Image>().raycastTarget = false;
+        bgPanel.transform.SetAsFirstSibling();
+
+        // ── Tombol Zoom IN (+) — atas ──────────────────────────────
+        var zInGO = new GameObject("ZoomIn");
+        zInGO.transform.SetParent(zoomGO.transform, false);
+        var zInRT = zInGO.AddComponent<RectTransform>();
+        zInRT.anchorMin = new Vector2(0f, 0.5f); zInRT.anchorMax = new Vector2(1f, 1f);
+        zInRT.offsetMin = new Vector2(0f, 2f); zInRT.offsetMax = Vector2.zero;
+        var zInImg = zInGO.AddComponent<Image>(); zInImg.color = new Color(0.10f, 0.10f, 0.10f, 0.90f);
+        var zInBtn = zInGO.AddComponent<Button>(); zInBtn.targetGraphic = zInImg;
+        var zInCB = zInBtn.colors;
+        zInCB.pressedColor     = new Color(0.30f, 1f, 0.47f, 0.40f);
+        zInCB.highlightedColor = new Color(0.20f, 0.50f, 0.30f, 0.30f);
+        zInBtn.colors = zInCB;
+        zInBtn.onClick.AddListener(() => SetZoom(_currentZoom + 0.5f));
+        var zInLblGO = MakeText(zInGO.transform, "+", 26, C_GREEN, TextAnchor.MiddleCenter, FontStyle.Bold);
+        var zInLblRT = zInLblGO.GetComponent<RectTransform>();
+        zInLblRT.anchorMin = Vector2.zero; zInLblRT.anchorMax = Vector2.one;
+        zInLblRT.offsetMin = zInLblRT.offsetMax = Vector2.zero;
+        // Border neon
+        var zInBo = new GameObject("Bo"); zInBo.transform.SetParent(zInGO.transform, false);
+        FullAnchor(zInBo.AddComponent<RectTransform>());
+        zInBo.GetComponent<RectTransform>().offsetMin = new Vector2(-1f, -1f);
+        zInBo.GetComponent<RectTransform>().offsetMax = new Vector2(1f, 1f);
+        zInBo.AddComponent<Image>().color = new Color(0.30f, 1f, 0.47f, 0.30f);
+        zInBo.transform.SetAsFirstSibling();
+
+        // ── Tombol Zoom OUT (-) — bawah ────────────────────────────
+        var zOutGO = new GameObject("ZoomOut");
+        zOutGO.transform.SetParent(zoomGO.transform, false);
+        var zOutRT = zOutGO.AddComponent<RectTransform>();
+        zOutRT.anchorMin = new Vector2(0f, 0f); zOutRT.anchorMax = new Vector2(1f, 0.5f);
+        zOutRT.offsetMin = Vector2.zero; zOutRT.offsetMax = new Vector2(0f, -2f);
+        var zOutImg = zOutGO.AddComponent<Image>(); zOutImg.color = new Color(0.10f, 0.10f, 0.10f, 0.90f);
+        var zOutBtn = zOutGO.AddComponent<Button>(); zOutBtn.targetGraphic = zOutImg;
+        var zOutCB = zOutBtn.colors;
+        zOutCB.pressedColor     = new Color(0.30f, 1f, 0.47f, 0.40f);
+        zOutCB.highlightedColor = new Color(0.20f, 0.50f, 0.30f, 0.30f);
+        zOutBtn.colors = zOutCB;
+        zOutBtn.onClick.AddListener(() => SetZoom(_currentZoom - 0.5f));
+        var zOutLblGO = MakeText(zOutGO.transform, "−", 26, C_WHITE, TextAnchor.MiddleCenter, FontStyle.Bold);
+        var zOutLblRT = zOutLblGO.GetComponent<RectTransform>();
+        zOutLblRT.anchorMin = Vector2.zero; zOutLblRT.anchorMax = Vector2.one;
+        zOutLblRT.offsetMin = zOutLblRT.offsetMax = Vector2.zero;
+        var zOutBo = new GameObject("Bo"); zOutBo.transform.SetParent(zOutGO.transform, false);
+        FullAnchor(zOutBo.AddComponent<RectTransform>());
+        zOutBo.GetComponent<RectTransform>().offsetMin = new Vector2(-1f, -1f);
+        zOutBo.GetComponent<RectTransform>().offsetMax = new Vector2(1f, 1f);
+        zOutBo.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.12f);
+        zOutBo.transform.SetAsFirstSibling();
     }
 
     // ─────────────────────────────────────────────────────────────
