@@ -139,7 +139,7 @@ BlendTree:
   - serializedVersion: 2
     m_Motion: {fileID: -203655887218126122, guid: a9c8d103fc328414db0758901bc1d6d4, type: 3}
     m_Threshold: 1
-    m_Position: {x: 0, y: -2}
+    m_Position: {x: 2, y: 0}
     m_TimeScale: 1
     m_CycleOffset: 0
     m_DirectBlendParameter: Blend
@@ -168,8 +168,8 @@ AnimatorStateMachine:
   m_EntryTransitions: []
   m_StateMachineTransitions: {}
   m_StateMachineBehaviours: []
-  m_AnyStatePosition: {x: 20, y: -240, z: 0}
+  m_AnyStatePosition: {x: 60, y: 210, z: 0}
   m_EntryPosition: {x: -150, y: 370, z: 0}
-  m_ExitPosition: {x: 910, y: 110, z: 0}
+  m_ExitPosition: {x: 430, y: 200, z: 0}
   m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}
   m_DefaultState: {fileID: 2912009276762582271}

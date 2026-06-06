@@ -24,12 +24,17 @@ public class PushDoor : MonoBehaviour
     private float      currentAngle    = 0f;
     private Transform  playerTransform;
     private float      lastPushTime    = -999f;
-    private Vector3    hingeWorldPos;
+
+    // ── FIX: simpan initial forward di world space saat Start ──
+    private Vector3    initialForward;
 
     void Start()
     {
         var player = GameObject.FindGameObjectWithTag("Player");
         if (player != null) playerTransform = player.transform;
+
+        // Simpan arah forward pintu saat belum diputar sama sekali
+        initialForward = transform.forward;
 
         var col = GetComponent<Collider>();
         if (col != null) col.isTrigger = false;
@@ -42,13 +47,18 @@ public class PushDoor : MonoBehaviour
 
     public void ReceivePush(Vector3 pushDir)
     {
-        float dot = Vector3.Dot(pushDir.normalized, transform.right);
+        // ── FIX: pakai initialForward (world space, tidak berubah saat pintu berotasi)
+        //        bukan transform.right yang berubah seiring rotasi pintu
+        Vector3 doorRight = Vector3.Cross(Vector3.up, initialForward).normalized;
+        float dot = Vector3.Dot(pushDir.normalized, doorRight);
         if (invertPushDirection) dot = -dot;
 
         float impulse = dot * pushForce / doorMass;
 
-        if (currentAngle >=  maxAngle && impulse > 0f) return;
-        if (currentAngle <= -maxAngle && impulse < 0f) return;
+        // ── FIX: clamp hanya blok kalau impulse SEARAH dengan limit yang sudah tercapai
+        //        pakai epsilon kecil supaya dorongan balik tetap lolos
+        if (currentAngle >=  maxAngle && impulse > 0.01f) return;
+        if (currentAngle <= -maxAngle && impulse < -0.01f) return;
 
         // Boost kalau mendorong dari arah berlawanan saat pintu sudah terbuka jauh
         if (Mathf.Abs(currentAngle) > maxAngle * 0.7f)
@@ -67,25 +77,19 @@ public class PushDoor : MonoBehaviour
         bool playerNear = playerTransform != null &&
                           Vector3.Distance(transform.position, playerTransform.position) <= closeDistance;
 
-        // Auto close — hanya kalau player jauh DAN sudah lama sejak push terakhir
         bool recentlyPushed = (Time.time - lastPushTime) < 1f;
         if (autoClose && !playerNear && !recentlyPushed && Mathf.Abs(currentAngle) > 0.5f)
         {
-            // Spring force menuju 0
             float springForce = -currentAngle * closeForce;
             angularVelocity += springForce * Time.deltaTime;
         }
 
-        // Damping
         angularVelocity *= Mathf.Exp(-damping * Time.deltaTime);
 
-        // Dead stop
         if (Mathf.Abs(angularVelocity) < 0.02f && Mathf.Abs(currentAngle) < 0.5f)
         {
             angularVelocity = 0f;
             currentAngle    = 0f;
-
-            // Snap ke posisi awal
             SnapToZero();
             return;
         }
@@ -96,7 +100,6 @@ public class PushDoor : MonoBehaviour
             return;
         }
 
-        // Clamp angle
         float nextAngle = currentAngle + angularVelocity * Time.deltaTime;
         if (nextAngle > maxAngle)
         {
@@ -115,7 +118,6 @@ public class PushDoor : MonoBehaviour
             return;
         }
 
-        // Stop saat auto close kalau player dekat area swing
         bool isAutoClosing = !recentlyPushed && autoClose;
         if (isAutoClosing && PlayerInSwingArea())
         {
@@ -132,7 +134,6 @@ public class PushDoor : MonoBehaviour
 
     void SnapToZero()
     {
-        // Reset rotasi ke posisi awal berdasarkan currentAngle yang tersisa
         if (Mathf.Abs(currentAngle) > 0.01f)
         {
             Vector3 hinge = transform.TransformPoint(new Vector3(hingeSideOffset, 0f, 0f));
@@ -145,21 +146,13 @@ public class PushDoor : MonoBehaviour
     {
         if (playerTransform == null) return false;
 
-        // Ambil scale player untuk kompensasi ukuran CharacterController
-        float playerScale  = Mathf.Max(
-            playerTransform.localScale.x,
-            playerTransform.localScale.z
-        );
-
-        // Ambil CharacterController radius kalau ada
+        float playerScale  = Mathf.Max(playerTransform.localScale.x, playerTransform.localScale.z);
         float playerRadius = 0.3f;
         var cc = playerTransform.GetComponent<CharacterController>();
         if (cc != null) playerRadius = cc.radius;
         float effectiveRadius = playerRadius * playerScale;
 
         float distToPlayer = Vector3.Distance(transform.position, playerTransform.position);
-
-        // Threshold check pakai effective radius
         if (distToPlayer > 4f + effectiveRadius) return false;
 
         Vector3 hinge       = transform.TransformPoint(new Vector3(hingeSideOffset, 0f, 0f));
@@ -170,6 +163,7 @@ public class PushDoor : MonoBehaviour
 
         return distFromHinge <= doorLen * 1.5f + effectiveRadius;
     }
+
     bool WillHitWall()
     {
         if (wallLayer == 0) return false;

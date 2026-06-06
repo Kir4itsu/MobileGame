@@ -128,7 +128,10 @@ public class PlayerMovement : MonoBehaviour
                         || (FloatingJoystick.Instance != null && FloatingJoystick.Instance.SprintHeld);
         float currentSpeed = isSprinting ? runSpeed : walkSpeed;
 
-        bool isFPP = (cameraController != null && cameraController.isFirstPerson);
+        bool isFPP      = (cameraController != null && cameraController.isFirstPerson);
+        bool isShoulder = (cameraController != null && cameraController.cameraMode == CameraController.CameraMode.Shoulder);
+        // Strafe hanya aktif di Shoulder & FPP — TPP pakai GTA 4 style (rotate to move dir)
+        bool isStrafe   = isFPP || isShoulder;
 
         if (cameraTransform == null)
         {
@@ -152,8 +155,9 @@ public class PlayerMovement : MonoBehaviour
         }
 
         Vector3 moveDirection;
-        if (isFPP)
+        if (isStrafe)
         {
+            // Shoulder & FPP: karakter tidak rotate ke arah gerak, strafe murni
             Vector3 charForward = transform.forward;
             Vector3 charRight   = transform.right;
             charForward.y = 0f; charForward.Normalize();
@@ -162,6 +166,7 @@ public class PlayerMovement : MonoBehaviour
         }
         else
         {
+            // TPP: camera-relative movement, karakter rotate ke arah gerak (GTA 4)
             moveDirection = cameraForward * v + cameraRight * h;
         }
 
@@ -172,17 +177,22 @@ public class PlayerMovement : MonoBehaviour
 
         if (isMoving)
         {
-            if (isFPP)
+            if (isStrafe)
+            {
+                // Shoulder & FPP: karakter selalu hadap arah kamera, tidak rotate ke move dir
                 transform.rotation = Quaternion.Euler(0, cameraTransform.eulerAngles.y, 0);
+            }
             else
             {
+                // TPP GTA 4 style: rotate ke arah gerak
                 Quaternion targetRot = Quaternion.LookRotation(moveDirection.normalized);
                 transform.rotation  = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
             }
             controller.Move(moveDirection.normalized * currentSpeed * Time.deltaTime);
         }
-        else if (isFPP)
+        else if (isStrafe)
         {
+            // Diam tapi strafe mode: tetap hadap arah kamera
             transform.rotation = Quaternion.Euler(0, cameraTransform.eulerAngles.y, 0);
         }
 
@@ -214,7 +224,6 @@ public class PlayerMovement : MonoBehaviour
 
             Debug.DrawRay(origin, lastMoveDirection * scaledPushDist, Color.red);
 
-            // Cast dengan doorLayer — kalau 0 pakai semua layer
             int layerToUse = (doorLayer.value != 0) ? doorLayer.value : ~0;
 
             if (Physics.Raycast(origin, lastMoveDirection, out RaycastHit hit, scaledPushDist, layerToUse))
@@ -235,20 +244,31 @@ public class PlayerMovement : MonoBehaviour
         // ── Animator ──────────────────────────────
         if (animator != null)
         {
-            Vector3 localMove = transform.InverseTransformDirection(moveDirection);
-            float animH = 0f, animV = 0f, speed = 0f;
+            float animH = 0f, animV = 0f;
 
             if (isMoving)
             {
                 float scale = isSprinting ? 2f : 1f;
-                animH = localMove.x * scale;
-                animV = localMove.z * scale;
-                speed = moveDirection.magnitude * currentSpeed;
+
+                if (isStrafe)
+                {
+                    // Shoulder/FPP: kirim komponen local agar blend tree strafe benar
+                    Vector3 localMove = transform.InverseTransformDirection(moveDirection);
+                    animH = localMove.x * scale;
+                    animV = localMove.z * scale;
+                }
+                else
+                {
+                    // TPP GTA 4: karakter selalu lari ke depan relatif dirinya sendiri
+                    // → Horizontal = 0, Vertical = speed scale
+                    animH = 0f;
+                    animV = scale;
+                }
             }
 
-            animator.SetFloat("Horizontal", animH);
-            animator.SetFloat("Vertical",   animV);
-            animator.SetFloat("Speed",      speed);
+            // Damp time 0.1f bikin transisi smooth antar animasi
+            animator.SetFloat("Horizontal", animH, 0.1f, Time.deltaTime);
+            animator.SetFloat("Vertical",   animV, 0.1f, Time.deltaTime);
         }
     }
 
