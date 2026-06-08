@@ -19,10 +19,10 @@ public class MinimapSystem : MonoBehaviour
     public static MinimapSystem Instance { get; private set; }
 
     [Header("Minimap Settings")]
-    public float mapSize        = 150f;  // ukuran minimap di layar (px)
-    public float cameraHeight   = 10f;  // ketinggian kamera dari posisi Y player
-    public float cameraViewSize = 20f;  // area yang dicakup (orthographic size)
-    public Vector2 screenOffset = new Vector2(20f, 20f); // jarak dari pojok kiri atas
+    public float mapSize        = 150f;
+    public float cameraHeight   = 10f;
+    public float cameraViewSize = 20f;
+    public Vector2 screenOffset = new Vector2(20f, 20f);
 
     [Header("Visual")]
     public Color borderColor    = new Color(0.2f, 0.2f, 0.2f, 0.9f);
@@ -30,7 +30,7 @@ public class MinimapSystem : MonoBehaviour
     public float borderThickness = 6f;
 
     [Header("Player Indicator")]
-    public Color playerDotColor = new Color(0f, 0.8f, 1f, 1f); // biru cyan
+    public Color playerDotColor = new Color(0f, 0.8f, 1f, 1f);
     public float playerDotSize  = 14f;
 
     [Header("Floor Clip Settings")]
@@ -41,18 +41,30 @@ public class MinimapSystem : MonoBehaviour
     public float clipBelowFeet = 6f;
 
     // Public API
-    public RectTransform PanelRT  { get; private set; }
-    public Canvas        UICanvas { get; private set; }
+    public RectTransform PanelRT       { get; private set; }
+    public RectTransform MapRotateRoot { get; private set; } // hanya layer ini yang dirotasi
+    public Canvas        UICanvas      { get; private set; }
 
     // Private
     private Camera        _minimapCam;
     private RenderTexture _renderTex;
     private Transform     _playerTransform;
+    private Transform          _playerRootTransform; // root transform, untuk posisi X/Z
+    private CharacterController _playerCC;           // untuk baca posisi Y kaki yang stabil (tidak kena root motion)
     private Transform     _trackedTarget;
+    private float         _smoothCamY;          // posisi Y kamera yang sudah di-smooth (anti-shake)
+    private float         _smoothPlayerAngle;   // yaw player yang sudah di-smooth (anti dot-shake)
     private Canvas        _canvas;
     private RawImage      _mapImage;
     private GameObject    _playerDot;
     private GameObject    _panelGO;
+    private GameObject    _mapRotateRoot; // layer yang dirotasi saat mode rotate aktif
+    private RectTransform _northTabRT;    // pill "U" — ikut peta saat rotate mode
+    private RectTransform _northTextRT;   // teks "U" — di-counter-rotate agar tetap terbaca
+    private Text          _zoneLabelTxt; // satu teks: default "▲ MINIMAP", ganti saat masuk zona
+
+    static readonly Color C_LABEL_DEFAULT = new Color(0.7f, 0.7f, 0.7f, 0.8f);
+    static readonly Color C_LABEL_ZONE    = new Color(0.3f, 0.85f, 0.35f, 1f);
 
     // ──────────────────────────────────────────────
     void Awake()
@@ -88,7 +100,23 @@ public class MinimapSystem : MonoBehaviour
         {
             _playerTransform = player.transform;
             _trackedTarget   = player.transform;
-            Debug.Log("[Minimap] Player ditemukan: " + player.name);
+
+            // Coba ambil CharacterController — posisi kakinya (bounds.min.y) tidak
+            // kena root motion bobbing, jauh lebih stabil dari transform.position.y
+            _playerCC = player.GetComponent<CharacterController>();
+
+            // Fallback: root transform (untuk kasus tanpa CC)
+            Transform root = player.transform;
+            while (root.parent != null) root = root.parent;
+            _playerRootTransform = root;
+
+            // Init smooth angle
+            Vector3 initFwd = player.transform.rotation * Vector3.forward; initFwd.y = 0f;
+            _smoothPlayerAngle = initFwd.sqrMagnitude > 0.001f
+                ? Mathf.Atan2(initFwd.x, initFwd.z) * Mathf.Rad2Deg : 0f;
+
+            Debug.Log("[Minimap] Player ditemukan: " + player.name
+                + (_playerCC != null ? " (CharacterController OK)" : " (no CC, pakai root)"));
         }
         else
         {
@@ -107,6 +135,19 @@ public class MinimapSystem : MonoBehaviour
     public void ResetTrackedTarget()
     {
         _trackedTarget = _playerTransform;
+    }
+
+    /// <summary>
+    /// Panggil dengan nama zona saat player masuk area.
+    /// Panggil dengan string kosong ("") saat player keluar — teks balik ke "▲ MINIMAP".
+    /// </summary>
+    public void SetZoneName(string zoneName)
+    {
+        if (_zoneLabelTxt == null) return;
+
+        bool isZone = !string.IsNullOrEmpty(zoneName);
+        _zoneLabelTxt.text  = isZone ? zoneName : "▲ MINIMAP";
+        _zoneLabelTxt.color = isZone ? C_LABEL_ZONE : C_LABEL_DEFAULT;
     }
 
     // ──────────────────────────────────────────────
@@ -129,12 +170,21 @@ public class MinimapSystem : MonoBehaviour
         _minimapCam.targetTexture    = _renderTex;
         _minimapCam.clearFlags       = CameraClearFlags.SolidColor;
         _minimapCam.backgroundColor  = new Color(0.1f, 0.15f, 0.1f, 1f);
-        _minimapCam.cullingMask      = ~0;
+        _minimapCam.cullingMask      = ~0 & ~(1 << LayerMask.NameToLayer("Player"));
 
         camGO.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
         if (_playerTransform != null)
-            camGO.transform.position = _playerTransform.position + Vector3.up * cameraHeight;
+        {
+            _smoothCamY = _playerTransform.position.y;
+            camGO.transform.position = new Vector3(
+                _playerTransform.position.x,
+                _smoothCamY + cameraHeight,
+                _playerTransform.position.z);
+
+            if (_playerCC == null)
+                _playerCC = _playerTransform.GetComponent<CharacterController>();
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -187,9 +237,21 @@ public class MinimapSystem : MonoBehaviour
         borderImg.sprite  = CreateCircleSprite(256);
         borderGO.transform.SetAsFirstSibling();
 
-        // ── Mask container (lingkaran) ────────────
+        // ── MapRotateRoot — hanya layer ini yang dirotasi saat mode rotate aktif ──
+        // Berisi: MapMask (gambar peta) + PlayerDot (indikator arah player)
+        // Border, label, tab "U", dan tap area tetap di _panelGO → tidak ikut berputar
+        _mapRotateRoot = new GameObject("MapRotateRoot");
+        _mapRotateRoot.transform.SetParent(_panelGO.transform, false);
+        RectTransform rotateRT = _mapRotateRoot.AddComponent<RectTransform>();
+        rotateRT.anchorMin = Vector2.zero;
+        rotateRT.anchorMax = Vector2.one;
+        rotateRT.offsetMin = Vector2.zero;
+        rotateRT.offsetMax = Vector2.zero;
+        MapRotateRoot = rotateRT; // assign setelah deklarasi
+
+        // ── Mask container (lingkaran) — child dari _mapRotateRoot ────────────
         GameObject maskGO = new GameObject("MapMask");
-        maskGO.transform.SetParent(_panelGO.transform, false);
+        maskGO.transform.SetParent(_mapRotateRoot.transform, false);
 
         RectTransform maskRT = maskGO.AddComponent<RectTransform>();
         maskRT.anchorMin = Vector2.zero;
@@ -217,39 +279,29 @@ public class MinimapSystem : MonoBehaviour
         _mapImage         = rawGO.AddComponent<RawImage>();
         _mapImage.texture = _renderTex;
 
-        // ── Player dot (titik biru di tengah) ─────
+        // ── Player dot (titik biru di tengah) — child _mapRotateRoot ─────────
         _playerDot = new GameObject("PlayerDot");
-        _playerDot.transform.SetParent(_panelGO.transform, false);
+        _playerDot.transform.SetParent(_mapRotateRoot.transform, false);
+
+        // ── Player Arrow — GTA style, single GameObject ───────────────────────
+        _playerDot = new GameObject("PlayerArrow");
+        _playerDot.transform.SetParent(_mapRotateRoot.transform, false);
 
         RectTransform dotRT = _playerDot.AddComponent<RectTransform>();
         dotRT.anchorMin        = new Vector2(0.5f, 0.5f);
         dotRT.anchorMax        = new Vector2(0.5f, 0.5f);
         dotRT.pivot            = new Vector2(0.5f, 0.5f);
         dotRT.anchoredPosition = Vector2.zero;
-        dotRT.sizeDelta        = new Vector2(playerDotSize, playerDotSize);
+        dotRT.sizeDelta        = new Vector2(playerDotSize * 1.2f, playerDotSize * 1.6f);
 
-        Image dotImg   = _playerDot.AddComponent<Image>();
-        dotImg.color   = playerDotColor;
-        dotImg.sprite  = CreateCircleSprite(64);
-
-        // Segitiga penunjuk arah player
-        GameObject arrowGO = new GameObject("Arrow");
-        arrowGO.transform.SetParent(_playerDot.transform, false);
-        RectTransform arrowRT = arrowGO.AddComponent<RectTransform>();
-        arrowRT.anchorMin        = new Vector2(0.5f, 1f);
-        arrowRT.anchorMax        = new Vector2(0.5f, 1f);
-        arrowRT.pivot            = new Vector2(0.5f, 0f);
-        arrowRT.anchoredPosition = new Vector2(0f, 2f);
-        arrowRT.sizeDelta        = new Vector2(8f, 10f);
-
-        Image arrowImg = arrowGO.AddComponent<Image>();
-        arrowImg.color  = playerDotColor;
-        arrowImg.sprite = CreateArrowSprite();
+        Image dotImg  = _playerDot.AddComponent<Image>();
+        dotImg.color  = Color.white; // warna dikendalikan di texture langsung
+        dotImg.sprite = CreateGTAArrowSprite();
 
         // ── Tab "U" gaya GTA 4 ───────────────────
         CreateCompassLabel(canvasGO.transform, panelRT);
 
-        // ── Label nama minimap ────────────────────
+        // ── Label dinamis: default "▲ MINIMAP", ganti nama zona saat masuk area ──
         GameObject labelGO = new GameObject("MinimapLabel");
         labelGO.transform.SetParent(_panelGO.transform, false);
 
@@ -260,13 +312,13 @@ public class MinimapSystem : MonoBehaviour
         labelRT.anchoredPosition = new Vector2(0f, -4f);
         labelRT.sizeDelta        = new Vector2(0f, 22f);
 
-        Text labelTxt      = labelGO.AddComponent<Text>();
-        labelTxt.text      = "▲ MINIMAP";
-        labelTxt.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        labelTxt.fontSize  = 13;
-        labelTxt.fontStyle = FontStyle.Bold;
-        labelTxt.color     = new Color(0.7f, 0.7f, 0.7f, 0.8f);
-        labelTxt.alignment = TextAnchor.MiddleCenter;
+        _zoneLabelTxt           = labelGO.AddComponent<Text>();
+        _zoneLabelTxt.text      = "▲ MINIMAP";
+        _zoneLabelTxt.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        _zoneLabelTxt.fontSize  = 13;
+        _zoneLabelTxt.fontStyle = FontStyle.Bold;
+        _zoneLabelTxt.color     = C_LABEL_DEFAULT;
+        _zoneLabelTxt.alignment = TextAnchor.MiddleCenter;
 
         // ── Tap area ─────────────────────────────
         GameObject tapGO = new GameObject("MinimapTapArea");
@@ -308,17 +360,13 @@ public class MinimapSystem : MonoBehaviour
     // ──────────────────────────────────────────────
     void CreateCompassLabel(Transform canvasParent, RectTransform panelRT)
     {
-        // Tab putih kecil menonjol di tepi atas border — persis gaya GTA 4
-        // Setengah tab di luar border, setengah menindih border
         float tabW = 24f;
         float tabH = 18f;
-        // anchoredPosition Y positif = geser ke atas (di luar panel)
-        // Atur supaya pusat tab ada persis di garis tepi atas
-        float tabY = tabH * 0.5f;
 
-        // ── Background tab: rounded rect putih ──
         GameObject tabGO = new GameObject("NorthTab");
-        tabGO.transform.SetParent(_panelGO.transform, false);
+        // Taruh di _mapRotateRoot agar ikut berputar bersama peta
+        // → saat peta berputar, "U" otomatis menunjuk utara yang sesungguhnya
+        tabGO.transform.SetParent(_mapRotateRoot.transform, false);
 
         RectTransform tabRT = tabGO.AddComponent<RectTransform>();
         tabRT.anchorMin        = new Vector2(0.5f, 1f);
@@ -326,12 +374,12 @@ public class MinimapSystem : MonoBehaviour
         tabRT.pivot            = new Vector2(0.5f, 0.5f);
         tabRT.anchoredPosition = new Vector2(0f, tabH * 0.1f);
         tabRT.sizeDelta        = new Vector2(tabW, tabH);
+        _northTabRT = tabRT; // pill — ikut rotasi peta (menunjuk utara)
 
         Image tabImg  = tabGO.AddComponent<Image>();
         tabImg.color  = new Color(0.95f, 0.95f, 0.95f, 1f);
         tabImg.sprite = CreateRoundedRectSprite(48, 32, 16);
 
-        // ── Teks "U" hitam di tengah tab ──
         GameObject uLabelGO = new GameObject("Dir_U");
         uLabelGO.transform.SetParent(tabGO.transform, false);
 
@@ -340,6 +388,7 @@ public class MinimapSystem : MonoBehaviour
         uLabelRT.anchorMax = Vector2.one;
         uLabelRT.offsetMin = Vector2.zero;
         uLabelRT.offsetMax = Vector2.zero;
+        _northTextRT = uLabelRT; // teks — di-counter-rotate agar "U" selalu terbaca tegak
 
         Text t      = uLabelGO.AddComponent<Text>();
         t.text      = "U";
@@ -364,27 +413,110 @@ public class MinimapSystem : MonoBehaviour
             {
                 _playerTransform = p.transform;
                 _trackedTarget   = p.transform;
+                _playerCC        = p.GetComponent<CharacterController>();
+
+                Transform root = p.transform;
+                while (root.parent != null) root = root.parent;
+                _playerRootTransform = root;
+
+                _smoothCamY = p.transform.position.y;
+
+                Vector3 initFwd2 = p.transform.rotation * Vector3.forward; initFwd2.y = 0f;
+                _smoothPlayerAngle = initFwd2.sqrMagnitude > 0.001f
+                    ? Mathf.Atan2(initFwd2.x, initFwd2.z) * Mathf.Rad2Deg : 0f;
             }
             else return;
         }
 
         Transform target = _trackedTarget != null ? _trackedTarget : _playerTransform;
 
-        _minimapCam.transform.position = new Vector3(
-            target.position.x,
-            target.position.y + cameraHeight,
-            target.position.z
-        );
+        // ── Deteksi mode kendaraan: _trackedTarget beda dari _playerTransform ──
+        bool inVehicle = (_trackedTarget != null && _trackedTarget != _playerTransform);
 
+        float stableY;
+        Transform posSource;
+
+        if (inVehicle)
+        {
+            // Naik kendaraan: pakai posisi kendaraan langsung, tanpa CC player
+            // Kendaraan tidak punya root motion jadi transform.position aman
+            posSource = target;
+            stableY   = target.position.y;
+        }
+        else
+        {
+            // Jalan kaki: pakai root + CC untuk anti-shake root motion
+            posSource = (_playerRootTransform != null) ? _playerRootTransform : target;
+            if (_playerCC != null && _playerCC.enabled)
+                stableY = _playerCC.bounds.min.y + _playerCC.height * 0.5f;
+            else
+                stableY = posSource.position.y;
+        }
+
+        // Lerp ringan untuk transisi halus saat naik tangga/lereng
+        _smoothCamY = Mathf.Lerp(_smoothCamY, stableY, Time.deltaTime * 8f);
+
+        _minimapCam.transform.position = new Vector3(
+            posSource.position.x,
+            _smoothCamY + cameraHeight,
+            posSource.position.z
+        );
         _minimapCam.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
         _minimapCam.nearClipPlane = Mathf.Max(0.01f, cameraHeight - clipAboveHead);
         _minimapCam.farClipPlane  = cameraHeight + clipBelowFeet;
 
-        if (_playerDot != null)
+        // Yaw: saat kendaraan pakai rotasi kendaraan langsung (tidak ada root motion),
+        // saat jalan kaki pakai Atan2 + smooth untuk filter root motion noise
+        Vector3 fwd;
+        float smoothSpeed;
+        if (inVehicle)
         {
-            float angle = target.eulerAngles.y;
-            _playerDot.transform.localRotation = Quaternion.Euler(0f, 0f, -angle);
+            fwd         = target.forward; fwd.y = 0f;
+            smoothSpeed = 60f; // kendaraan tidak ada noise, bisa cepat
+        }
+        else
+        {
+            fwd         = target.rotation * Vector3.forward; fwd.y = 0f;
+            smoothSpeed = 30f; // filter root motion noise
+        }
+
+        float rawAngle = fwd.sqrMagnitude > 0.001f
+            ? Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg
+            : _smoothPlayerAngle;
+
+        float angleDelta = Mathf.DeltaAngle(_smoothPlayerAngle, rawAngle);
+        _smoothPlayerAngle += angleDelta * Mathf.Clamp01(Time.deltaTime * smoothSpeed);
+        float playerAngle = _smoothPlayerAngle;
+
+        // ── Mode rotate dikendalikan dari AccessibilitySettings ───────────────
+        bool rotateMode = (MapRotateRoot != null &&
+                           MapRotateRoot.localRotation != Quaternion.identity);
+
+        if (rotateMode)
+        {
+            // GTA-style: peta berputar, player dot tetap menunjuk arah hadap player
+            if (_playerDot != null)
+                _playerDot.transform.localRotation = Quaternion.Euler(0f, 0f, -playerAngle);
+
+            // Teks "U" harus selalu menghadap atas — cancel rotasi MapRotateRoot aktual
+            // (bukan pakai playerAngle, karena di TPP mode source-nya beda: kamera vs player)
+            if (_northTextRT != null)
+            {
+                float mapRot = MapRotateRoot.localEulerAngles.z;
+                _northTextRT.localRotation = Quaternion.Euler(0f, 0f, -mapRot);
+            }
+        }
+        else
+        {
+            // Mode default: peta diam (utara selalu atas),
+            // player dot berputar menunjukkan arah hadap player
+            if (_playerDot != null)
+                _playerDot.transform.localRotation = Quaternion.Euler(0f, 0f, -playerAngle);
+
+            // NorthTab dan teks kembali ke normal
+            if (_northTabRT  != null) _northTabRT.localRotation  = Quaternion.identity;
+            if (_northTextRT != null) _northTextRT.localRotation = Quaternion.identity;
         }
     }
 
@@ -433,7 +565,6 @@ public class MinimapSystem : MonoBehaviour
             new Vector2(0.5f, 0.5f), res);
     }
 
-    // Rounded rect sprite untuk tab utara
     Sprite CreateRoundedRectSprite(int w, int h, int radius)
     {
         Texture2D tex  = new Texture2D(w, h, TextureFormat.RGBA32, false);
@@ -450,6 +581,89 @@ public class MinimapSystem : MonoBehaviour
         }
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), w);
+    }
+
+    // Arrow GTA style: lancip di atas, melebar dan sedikit cekung di bawah
+    // Fill putih, outline hitam tebal — satu texture, tidak butuh child GO terpisah
+    Sprite CreateGTAArrowSprite()
+    {
+        int w = 64, h = 80;
+        Texture2D tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+
+        // Clear semua pixel
+        Color[] pixels = new Color[w * h];
+        for (int i = 0; i < pixels.Length; i++) pixels[i] = Color.clear;
+        tex.SetPixels(pixels);
+
+        // Definisi shape arrow GTA (koordinat dalam 0..1, Y=1 = atas = ujung lancip)
+        // Titik-titik polygon (searah jarum jam):
+        //   tip    = (0.5, 1.0)   ← ujung atas
+        //   kanan  = (1.0, 0.35)  ← bahu kanan
+        //   notch  = (0.5, 0.55)  ← lekukan tengah bawah
+        //   kiri   = (0.0, 0.35)  ← bahu kiri
+
+        Vector2 tip    = new Vector2(0.5f,  1.0f);
+        Vector2 rShoul = new Vector2(0.82f, 0.25f);
+        Vector2 notch  = new Vector2(0.5f,  0.45f);
+        Vector2 lShoul = new Vector2(0.18f, 0.25f);
+
+        Vector2[] poly = new Vector2[] { tip, rShoul, notch, lShoul };
+
+        // Rasterize: per pixel, cek apakah titik di dalam polygon
+        for (int py = 0; py < h; py++)
+        for (int px = 0; px < w; px++)
+        {
+            float fx = (px + 0.5f) / w;
+            float fy = (py + 0.5f) / h;
+            Vector2 p = new Vector2(fx, fy);
+
+            if (PointInPolygon(p, poly))
+                tex.SetPixel(px, py, Color.white);
+        }
+
+        // Outline hitam: per pixel fill, cek apakah ada tetangga yang clear
+        int outlineSize = 2;
+        Color[] filled = tex.GetPixels();
+        Color[] result = (Color[])filled.Clone();
+
+        for (int py = 0; py < h; py++)
+        for (int px = 0; px < w; px++)
+        {
+            if (filled[py * w + px].a > 0.5f) continue; // sudah putih, skip
+
+            // Cek apakah dalam radius outlineSize ada pixel putih
+            bool nearFill = false;
+            for (int oy = -outlineSize; oy <= outlineSize && !nearFill; oy++)
+            for (int ox = -outlineSize; ox <= outlineSize && !nearFill; ox++)
+            {
+                int nx = px + ox, ny = py + oy;
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                if (filled[ny * w + nx].a > 0.5f) nearFill = true;
+            }
+            if (nearFill) result[py * w + px] = Color.black;
+        }
+
+        tex.SetPixels(result);
+        tex.Apply();
+
+        return Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), w);
+    }
+
+    // Ray casting algorithm untuk point-in-polygon
+    bool PointInPolygon(Vector2 point, Vector2[] poly)
+    {
+        int n = poly.Length;
+        bool inside = false;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            float xi = poly[i].x, yi = poly[i].y;
+            float xj = poly[j].x, yj = poly[j].y;
+            if (((yi > point.y) != (yj > point.y)) &&
+                (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi))
+                inside = !inside;
+        }
+        return inside;
     }
 
     Sprite CreateArrowSprite()

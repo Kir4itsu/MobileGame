@@ -33,8 +33,17 @@ public class PhoneManager : MonoBehaviour
     public KeyCode pcOpenKey = KeyCode.PageUp; // Tombol PC untuk buka/tutup HP
 
     private bool isPhoneOpen = false;
+    private bool _isInVehicle = false;  // diset oleh VehicleController
     private float _lastToggleTime = -999f;
     private const float TOGGLE_COOLDOWN = 0.3f; // detik minimum antar toggle
+
+    public static PhoneManager Instance { get; private set; }
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+    }
 
     void Start()
     {
@@ -67,8 +76,20 @@ public class PhoneManager : MonoBehaviour
         }
     }
 
+    /// <summary>Dipanggil VehicleController — blok phone saat berkendara.</summary>
+    public void SetInVehicle(bool inVehicle)
+    {
+        _isInVehicle = inVehicle;
+        // Paksa tutup phone jika sedang terbuka saat masuk kendaraan
+        if (inVehicle && isPhoneOpen)
+            ClosePhone();
+    }
+
     public void TogglePhone()
     {
+        // Jangan buka phone saat di dalam kendaraan
+        if (_isInVehicle) return;
+
         // Debounce — abaikan jika dipanggil terlalu cepat (double-trigger guard)
         float now = Time.unscaledTime;
         if (now - _lastToggleTime < TOGGLE_COOLDOWN) return;

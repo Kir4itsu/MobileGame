@@ -5,6 +5,10 @@ TagManager:
   serializedVersion: 3
   tags:
   - MapLayer
+  - NPC
+  - Vehicle
+  - CarPatrol
+  - Kantin
   layers:
   - Default
   - TransparentFX
@@ -18,7 +22,7 @@ TagManager:
   - Player
   - MapLayer
   - Door
-  - 
+  - Character
   - 
   - 
   - 

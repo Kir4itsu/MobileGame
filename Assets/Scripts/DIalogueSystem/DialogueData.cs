@@ -2,8 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 
 // ─────────────────────────────────────────────────────────────
-//  DIALOGUE BRANCH  — kumpulan lines untuk satu cabang pilihan
-//  Ini BUKAN nested DialogueData, jadi tidak ada recursion.
+//  DIALOGUE BRANCH
 // ─────────────────────────────────────────────────────────────
 [System.Serializable]
 public class DialogueBranch
@@ -13,7 +12,7 @@ public class DialogueBranch
 }
 
 // ─────────────────────────────────────────────────────────────
-//  DIALOGUE CHOICE  — satu tombol pilihan player
+//  DIALOGUE CHOICE
 // ─────────────────────────────────────────────────────────────
 [System.Serializable]
 public class DialogueChoice
@@ -26,12 +25,33 @@ public class DialogueChoice
 }
 
 // ─────────────────────────────────────────────────────────────
-//  DIALOGUE LINE  — satu baris ucapan
+//  DIALOGUE LINE
+//
+//  portraitTag dipakai untuk resolve sprite secara otomatis:
+//
+//  Untuk line isPlayer = true:
+//    - Kosong / "Normal"  →  Resources/CharacterSprites/MCT   atau FCT
+//    - "Angry"            →  Resources/CharacterSprites/MCT_Angry  atau FCT_Angry
+//    - "Sad"              →  Resources/CharacterSprites/MCT_Sad    atau FCT_Sad
+//    - dst (tag bebas asal nama file cocok)
+//
+//  Untuk line isPlayer = false (NPC):
+//    - Tetap pakai characterPortrait (assign manual di Inspector)
+//      ATAU isi portraitTag dengan nama file persis di CharacterSprites
+//      mis. "Risa_Happy" → Resources/CharacterSprites/Risa_Happy
 // ─────────────────────────────────────────────────────────────
 [System.Serializable]
 public class DialogueLine
 {
     public string characterName;
+
+    [Tooltip("Mood / ekspresi portrait.\n" +
+             "Player line  → kosong/'Normal' = default, 'Angry' = MCT_Angry / FCT_Angry, dst.\n" +
+             "NPC line     → nama file sprite persis di Resources/CharacterSprites/, atau kosong untuk pakai characterPortrait.")]
+    public string portraitTag = "Normal";
+
+    [Tooltip("Fallback manual — hanya dipakai jika portraitTag kosong DAN ini NPC line.\n" +
+             "Untuk player line, biarkan kosong — sprite diambil otomatis dari CharacterSwitcher.")]
     public Sprite characterPortrait;
 
     [TextArea(3, 10)]
@@ -50,7 +70,7 @@ public class DialogueLine
 }
 
 // ─────────────────────────────────────────────────────────────
-//  DIALOGUE DATA  — satu set dialogue, semua dalam 1 field
+//  DIALOGUE DATA
 // ─────────────────────────────────────────────────────────────
 [System.Serializable]
 public class DialogueData

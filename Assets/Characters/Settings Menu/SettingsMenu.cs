@@ -245,7 +245,7 @@ public class SettingsMenu : MonoBehaviour
         RectTransform bodyRT = body.GetComponent<RectTransform>();
         bodyRT.anchorMin        = new Vector2(0f, 0f);
         bodyRT.anchorMax        = new Vector2(1f, 1f);
-        bodyRT.offsetMin        = new Vector2(0f, 0f);
+        bodyRT.offsetMin        = new Vector2(0f, 58f);   // +58px clearance untuk BottomBar (56px) + 2px gap
         bodyRT.offsetMax        = new Vector2(0f, -82f);
 
         // Panel kiri — kategori
@@ -292,8 +292,8 @@ public class SettingsMenu : MonoBehaviour
         BuildBottomBar(_pauseMenuRoot.transform);
 
         // ── Tombol Tutup & Keluar — pojok kanan bawah, anchor dari kanan frame ──
-        float btnW = 170f, btnH = 58f, btnGap = 12f;
-        float fromBottom = 0f;
+        float btnW = 170f, btnH = 48f, btnGap = 12f;
+        float fromBottom = 4f;
         float fromRight  = 16f;
 
         GameObject btnKeluar = MakeRect("Btn_KG", _pauseMenuRoot.transform);
@@ -333,7 +333,7 @@ public class SettingsMenu : MonoBehaviour
         rtGS.sizeDelta        = new Vector2(gfxBtnW, btnH);
         _btnGfxSave.AddComponent<Image>().color = _accentBlue;
         ((Image)_btnGfxSave.GetComponent<Image>()).sprite = CreateRoundedSprite(6);
-        AddLabel(_btnGfxSave.transform, "[Simpan]  Simpan", 18, Color.white);
+        AddLabel(_btnGfxSave.transform, "Simpan", 18, Color.white);
         Button bGS = _btnGfxSave.AddComponent<Button>();
         bGS.onClick.AddListener(() => {
             if (GraphicsSettings.Instance != null) GraphicsSettings.Instance.SaveSettings();
@@ -1121,29 +1121,137 @@ public class SettingsMenu : MonoBehaviour
     // ── TAMPILAN ──────────────────────────────────
     void BuildCategoryPanel_Tampilan(Transform parent)
     {
+        // ── Wrapper panel (agar bisa di-toggle SetActive seperti panel lain) ──
         GameObject panel = MakeRect("Content_Tampilan", parent);
         StretchFull(panel.GetComponent<RectTransform>());
         _contentPanels.Add(panel);
 
-        AddSectionTitle(panel.transform, "Tampilan HUD", -30f);
-        AddRowSeparator(panel.transform, -75f);
+        // ── ScrollRect container (full panel, scrollbar overlay di kanan) ──────
+        GameObject scrollGO = MakeRect("TampilanScroll", panel.transform);
+        RectTransform scrollRT = scrollGO.GetComponent<RectTransform>();
+        scrollRT.anchorMin = Vector2.zero;
+        scrollRT.anchorMax = Vector2.one;
+        scrollRT.offsetMin = Vector2.zero;
+        scrollRT.offsetMax = Vector2.zero;
+        // Tidak perlu Image di sini — RectMask2D tidak butuh Image
 
-        AddSettingRow(panel.transform, "Tampilkan Minimap",
-            "Aktif / Nonaktif", -110f, null, null, Color.clear);
-        AddToggleRow(panel.transform, -110f, true);
+        ScrollRect scroll = scrollGO.AddComponent<ScrollRect>();
+        scroll.horizontal        = false;
+        scroll.vertical          = true;
+        scroll.scrollSensitivity = 30f;
+        scroll.movementType      = ScrollRect.MovementType.Clamped;
+        scroll.inertia           = true;
+        scroll.decelerationRate  = 0.135f;
 
-        AddRowSeparator(panel.transform, -155f);
+        // ── Viewport — pakai RectMask2D, BUKAN Mask+Image ────────────────────
+        // Mask+Image(clear) kadang bikin child tidak ter-render di Unity versi tertentu.
+        // RectMask2D lebih aman dan tidak butuh Image sama sekali.
+        GameObject vpGO = MakeRect("Viewport", scrollGO.transform);
+        RectTransform vpRT = vpGO.GetComponent<RectTransform>();
+        vpRT.anchorMin = Vector2.zero;
+        vpRT.anchorMax = Vector2.one;
+        vpRT.offsetMin = Vector2.zero;
+        vpRT.offsetMax = new Vector2(-8f, 0f); // sisakan 8px untuk scrollbar
+        vpGO.AddComponent<RectMask2D>();        // clip tanpa Image
+        scroll.viewport = vpRT;
 
-        AddSettingRow(panel.transform, "Tampilkan HP Bar",
-            "Aktif / Nonaktif", -195f, null, null, Color.clear);
-        AddToggleRow(panel.transform, -195f, true);
+        // ── Content ───────────────────────────────────────────────────────────
+        GameObject contentGO = MakeRect("TampilanContent", vpGO.transform);
+        RectTransform contentRT = contentGO.GetComponent<RectTransform>();
+        contentRT.anchorMin = new Vector2(0f, 1f);
+        contentRT.anchorMax = new Vector2(1f, 1f);
+        contentRT.pivot     = new Vector2(0.5f, 1f);
+        contentRT.offsetMin = Vector2.zero;
+        contentRT.offsetMax = Vector2.zero;
+        contentRT.sizeDelta = new Vector2(0f, 1200f); // tinggi sementara besar
+        scroll.content      = contentRT;
 
-        AddRowSeparator(panel.transform, -240f);
+        // ── Scrollbar vertikal tipis di kanan ────────────────────────────────
+        GameObject sbGO = MakeRect("TampilanScrollbar", panel.transform);
+        RectTransform sbRT = sbGO.GetComponent<RectTransform>();
+        sbRT.anchorMin        = new Vector2(1f, 0f);
+        sbRT.anchorMax        = new Vector2(1f, 1f);
+        sbRT.pivot            = new Vector2(1f, 0.5f);
+        sbRT.anchoredPosition = Vector2.zero;
+        sbRT.sizeDelta        = new Vector2(6f, 0f);
+        sbGO.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.06f);
 
-        AddSettingRow(panel.transform, "Ukuran HUD",
-            "Kecil / Normal / Besar", -280f, null, null, Color.clear);
+        GameObject saGO = MakeRect("SlidingArea", sbGO.transform);
+        RectTransform saRT = saGO.GetComponent<RectTransform>();
+        saRT.anchorMin = Vector2.zero; saRT.anchorMax = Vector2.one;
+        saRT.offsetMin = new Vector2(0f, 0f); saRT.offsetMax = Vector2.zero;
 
-        AddRowSeparator(panel.transform, -325f);
+        GameObject handleGO = MakeRect("Handle", saGO.transform);
+        RectTransform handleRT = handleGO.GetComponent<RectTransform>();
+        handleRT.anchorMin = Vector2.zero; handleRT.anchorMax = Vector2.one;
+        handleRT.offsetMin = Vector2.zero; handleRT.offsetMax = Vector2.zero;
+        Image handleImg = handleGO.AddComponent<Image>();
+        handleImg.color  = new Color(0.6f, 0.6f, 0.6f, 0.6f);
+        handleImg.sprite = CreateRoundedSprite(4);
+
+        Scrollbar sb = sbGO.AddComponent<Scrollbar>();
+        sb.direction      = Scrollbar.Direction.BottomToTop;
+        sb.handleRect     = handleRT;
+        sb.targetGraphic  = handleImg;
+        scroll.verticalScrollbar           = sb;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+        scroll.verticalScrollbarSpacing    = 2f;
+
+        // ── Embed konten ──────────────────────────────────────────────────────
+        if (AccessibilitySettings.Instance != null)
+        {
+            AccessibilitySettings.Instance.EmbedInto(contentGO.transform);
+            StartCoroutine(DelayedFitHeight(contentRT));
+        }
+        else
+        {
+            StartCoroutine(WaitAndEmbedAccessibility(contentGO.transform, contentRT));
+        }
+    }
+
+    // Tunggu 2 frame agar Unity selesai hitung layout sebelum resize content
+    System.Collections.IEnumerator DelayedFitHeight(RectTransform contentRT)
+    {
+        yield return null;
+        yield return null;
+        FitContentHeight(contentRT);
+    }
+
+    void FitContentHeight(RectTransform contentRT)
+    {
+        float maxBottom = 0f;
+        foreach (RectTransform child in contentRT)
+        {
+            float bottom = Mathf.Abs(child.anchoredPosition.y) + Mathf.Abs(child.sizeDelta.y);
+            if (child.anchorMin.y != child.anchorMax.y) continue; // skip stretch-anchor child
+            if (bottom > maxBottom) maxBottom = bottom;
+        }
+        if (maxBottom < 100f) maxBottom = 1200f; // fallback kalau belum ke-hitung
+        contentRT.sizeDelta = new Vector2(0f, maxBottom + 60f);
+    }
+
+    System.Collections.IEnumerator WaitAndEmbedAccessibility(Transform contentParent, RectTransform contentRT)
+    {
+        float timeout = 5f;
+        while (AccessibilitySettings.Instance == null && timeout > 0f)
+        {
+            timeout -= Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        if (AccessibilitySettings.Instance != null)
+        {
+            AccessibilitySettings.Instance.EmbedInto(contentParent);
+            yield return null;
+            yield return null;
+            FitContentHeight(contentRT);
+            Debug.Log("[SettingsMenu] AccessibilitySettings berhasil di-embed via coroutine.");
+        }
+        else
+        {
+            Debug.LogWarning("[SettingsMenu] AccessibilitySettings tidak ditemukan setelah 5 detik!");
+            AddSectionTitle(contentParent, "AccessibilitySettings tidak ditemukan", -30f);
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -1425,9 +1533,9 @@ public class SettingsMenu : MonoBehaviour
 
         _rtBtnSelesai = MakeActionButton(bottomBar.transform, "✔  Selesai & Simpan",
             _accentGreen,
-            new Vector2(0f, 0f), new Vector2(260f, editBtnH),
+            new Vector2(-20f, 0f), new Vector2(260f, editBtnH),
             StopEditMode,
-            new Vector2(0.92f, 0.5f));
+            new Vector2(1f, 0.5f));
 
         _editModeOverlay.SetActive(false);
     }
@@ -1462,6 +1570,7 @@ public class SettingsMenu : MonoBehaviour
         _isEditMode = true;
         _editModeOverlay.SetActive(true);
         FloatingJoystick.Instance?.SetEditMode(true);
+        FloatingJoystick.Instance?.ShowPedalButtonsForEdit(); // tampilkan Gas/Rem agar bisa diedit
         Time.timeScale = 1f;
         _raycaster.enabled = true;
 
@@ -1479,6 +1588,7 @@ public class SettingsMenu : MonoBehaviour
     {
         _isEditMode = false;
         _editModeOverlay.SetActive(false);
+        FloatingJoystick.Instance?.HidePedalButtonsAfterEdit(); // kembalikan sesuai status kendaraan
         FloatingJoystick.Instance?.ClearProtectedRects();
         FloatingJoystick.Instance?.SetEditMode(false);
         FloatingJoystick.Instance?.SaveLayout();

@@ -107,6 +107,48 @@ public class GraphicsSettings : MonoBehaviour
         sr.elasticity        = 0.1f;
         sr.inertia           = true;
 
+        // ── Scrollbar vertikal ────────────────────────────────────
+        var sbGO = NewGO("GfxScrollbar", parent);
+        var sbRT = RT(sbGO);
+        sbRT.anchorMin        = new Vector2(1f, 0f);
+        sbRT.anchorMax        = new Vector2(1f, 1f);
+        sbRT.pivot            = new Vector2(1f, 0.5f);
+        sbRT.anchoredPosition = Vector2.zero;
+        sbRT.sizeDelta        = new Vector2(12f, 0f);
+
+        var sbImg   = sbGO.AddComponent<Image>();
+        sbImg.color = new Color(0.12f, 0.12f, 0.12f, 0.9f);
+
+        var sbComp            = sbGO.AddComponent<Scrollbar>();
+        sbComp.direction      = Scrollbar.Direction.BottomToTop;
+
+        // Handle (thumb)
+        var slidingArea = NewGO("SlidingArea", sbGO.transform);
+        var saRT        = RT(slidingArea);
+        saRT.anchorMin  = Vector2.zero; saRT.anchorMax = Vector2.one;
+        saRT.offsetMin  = Vector2.zero; saRT.offsetMax = Vector2.zero;
+
+        var handleGO  = NewGO("Handle", slidingArea.transform);
+        var handleRT  = RT(handleGO);
+        handleRT.anchorMin = Vector2.zero; handleRT.anchorMax = Vector2.one;
+        handleRT.offsetMin = new Vector2(2f, 2f);
+        handleRT.offsetMax = new Vector2(-2f, -2f);
+
+        var handleImg   = handleGO.AddComponent<Image>();
+        handleImg.color = new Color(0.55f, 0.55f, 0.55f, 0.9f);
+
+        sbComp.handleRect         = handleRT;
+        sbComp.targetGraphic      = handleImg;
+        var sbColors              = sbComp.colors;
+        sbColors.highlightedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        sbColors.pressedColor     = new Color(0.40f, 0.40f, 0.40f, 1f);
+        sbComp.colors             = sbColors;
+
+        // Hubungkan scrollbar ke ScrollRect
+        sr.verticalScrollbar                  = sbComp;
+        sr.verticalScrollbarVisibility        = ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport;
+        sr.verticalScrollbarSpacing           = 2f;
+
         // Viewport — RectMask2D untuk clipping
         var vp   = NewGO("VP", sv.transform);
         var vpRT = RT(vp);

@@ -27,17 +27,19 @@ public class DialogueUIBuilder : MonoBehaviour
 
     [Header("=== Ukuran Frame Portrait ===")]
     [Tooltip("Lebar area crop yang kelihatan")]
-    public float portraitFrameWidth  = 220f;
+    public float portraitFrameWidth  = 420f;
     [Tooltip("Tinggi area crop yang kelihatan")]
-    public float portraitFrameHeight = 300f;
+    public float portraitFrameHeight = 420f;
 
     [Header("=== Ukuran Gambar di Dalam Frame ===")]
-    public Vector2 activeImageSize  = new Vector2(260f, 420f);
-    public Vector2 passiveImageSize = new Vector2(200f, 340f);
+    public Vector2 activeImageSize  = new Vector2(700f, 1600f);
+    public Vector2 passiveImageSize = new Vector2(560f, 1280f);
 
     [Header("=== Offset Crop Portrait ===")]
-    public float playerImageOffsetY = 60f;
-    public float npcImageOffsetY    = 60f;
+    public float playerImageOffsetY = 390f;
+    public float playerImageOffsetX = -42.3f;
+    public float npcImageOffsetY    = 80f;
+    public float npcImageOffsetX    = 58.8f;
 
     [Header("=== Dialogue Box ===")]
     [Tooltip("Tinggi panel dialogue di bawah layar")]
@@ -124,6 +126,7 @@ public class DialogueUIBuilder : MonoBehaviour
 
         BuildPortrait(dialoguePanel, isLeft: true,
             portraitSprite: playerPortraitSprite,
+            imageOffsetX:   playerImageOffsetX,
             imageOffsetY:   playerImageOffsetY,
             glowColor:      P3_PlayerBadge,
             out pPortraitImg, out pShadowImg, out pGlow);
@@ -131,6 +134,7 @@ public class DialogueUIBuilder : MonoBehaviour
         // ── PORTRAIT NPC (kanan) ────────────────────────────────
         BuildPortrait(dialoguePanel, isLeft: false,
             portraitSprite: npcPortraitSprite,
+            imageOffsetX:   npcImageOffsetX,
             imageOffsetY:   npcImageOffsetY,
             glowColor:      P3_NpcBadge,
             out nPortraitImg, out nShadowImg, out nGlow);
@@ -249,7 +253,7 @@ public class DialogueUIBuilder : MonoBehaviour
     // ════════════════════════════════════════════════════════════
     void BuildPortrait(
         GameObject parent, bool isLeft,
-        Sprite portraitSprite, float imageOffsetY, Color glowColor,
+        Sprite portraitSprite, float imageOffsetX, float imageOffsetY, Color glowColor,
         out Image portraitImg, out Image shadowImg, out GameObject glowObj)
     {
         float anchorX = isLeft ? 0f : 1f;
@@ -264,6 +268,7 @@ public class DialogueUIBuilder : MonoBehaviour
         frameRT.pivot            = new Vector2(pivotX, 0f);
         frameRT.anchoredPosition = new Vector2(0f, panelHeight);
         frameRT.sizeDelta        = new Vector2(portraitFrameWidth, portraitFrameHeight);
+        frameRT.localScale       = new Vector3(1.6f, 1.6f, 1f); // scale frame agar portrait lebih besar
 
         // Mask supaya portrait tidak keluar dari frame
         Image maskImg = frame.AddComponent<Image>();
@@ -280,14 +285,19 @@ public class DialogueUIBuilder : MonoBehaviour
         shadowImg.color  = P3_ShadowTint;
         shadowImg.preserveAspect = true;
 
-        Vector2 imgSize = isLeft ? activeImageSize : passiveImageSize;
-        float offsetX   = isLeft ? 5f : -5f;
+        // Shadow offset mengikuti imageOffset dari Inspector (sedikit geser +5)
+        Vector2 imgSize    = isLeft ? activeImageSize : passiveImageSize;
+        Vector2 shadowPos  = isLeft
+            ? new Vector2(5.7f, -315.16f)
+            : new Vector2(51.94f, -119.9f);
+
         RectTransform shRT = RT(shadowObj);
         shRT.anchorMin        = new Vector2(0.5f, 0f);
         shRT.anchorMax        = new Vector2(0.5f, 0f);
         shRT.pivot            = new Vector2(0.5f, 0f);
-        shRT.anchoredPosition = new Vector2(offsetX, -(imgSize.y - portraitFrameHeight) + imageOffsetY - 5f);
+        shRT.anchoredPosition = shadowPos;
         shRT.sizeDelta        = imgSize;
+        shRT.localScale       = new Vector3(0.7f, 0.7f, 1f);
 
         // ── Portrait utama ──────────────────────────────────────
         string portraitName = isLeft ? "PlayerPortrait" : "NPCPortrait";
@@ -297,25 +307,18 @@ public class DialogueUIBuilder : MonoBehaviour
         portraitImg.color  = Color.white;
         portraitImg.preserveAspect = true;
 
+        // Player: hardcoded langsung agar tidak terpengaruh nilai Inspector lama
+        Vector2 portraitPos = isLeft
+            ? new Vector2(5.7f, -315.16f)
+            : new Vector2(58.8f, -115.8f);
+
         RectTransform pRT = RT(portraitObj);
         pRT.anchorMin        = new Vector2(0.5f, 0f);
         pRT.anchorMax        = new Vector2(0.5f, 0f);
         pRT.pivot            = new Vector2(0.5f, 0f);
-        pRT.anchoredPosition = new Vector2(0f, -(imgSize.y - portraitFrameHeight) + imageOffsetY);
+        pRT.anchoredPosition = portraitPos;
         pRT.sizeDelta        = imgSize;
-
-        // ── Bottom fade gradient (agar portrait menyatu ke panel) ──
-        // P3R selalu punya fade di bawah portrait supaya tidak floating
-        GameObject fadeObj = MakeUI("PortraitBottomFade", parent.transform);
-        Image fadeImg = fadeObj.AddComponent<Image>();
-        // Fade gelap di bawah portrait
-        fadeImg.color = new Color(P3_PanelBg.r, P3_PanelBg.g, P3_PanelBg.b, 0.85f);
-        RectTransform fadeRT = RT(fadeObj);
-        fadeRT.anchorMin        = new Vector2(anchorX, 0f);
-        fadeRT.anchorMax        = new Vector2(anchorX, 0f);
-        fadeRT.pivot            = new Vector2(pivotX, 0f);
-        fadeRT.anchoredPosition = new Vector2(0f, panelHeight);
-        fadeRT.sizeDelta        = new Vector2(portraitFrameWidth, 60f);
+        pRT.localScale       = new Vector3(0.7f, 0.7f, 1f);
 
         // ── Accent bar bawah (garis tipis di pangkal portrait) ──
         GameObject accentBar = MakeUI("PortraitAccentBar", parent.transform);
@@ -369,7 +372,7 @@ public class DialogueUIBuilder : MonoBehaviour
         nbRT.pivot            = new Vector2(0f, 0f);
         nbRT.anchoredPosition = new Vector2(24f, 4f);
         nbRT.sizeDelta        = new Vector2(160f, 28f);
-
+        nbRT.localScale       = new Vector3(1.18f, 1.18f, 1.18f);
         // ── Left tab accent (ciri khas P3R — blok kecil di kiri badge) ──
         GameObject leftTab = MakeUI("BadgeLeftTab", nameBadge.transform);
         Image ltImg = leftTab.AddComponent<Image>();
@@ -385,7 +388,7 @@ public class DialogueUIBuilder : MonoBehaviour
         GameObject arrowObj = MakeUI("BadgeArrow", nameBadge.transform);
         TextMeshProUGUI arrowTMP = arrowObj.AddComponent<TextMeshProUGUI>();
         arrowTMP.text      = "▶";
-        arrowTMP.fontSize  = 7f;
+        arrowTMP.fontSize  = 10f;
         arrowTMP.color     = new Color(1f, 1f, 1f, 0.5f);
         arrowTMP.alignment = TextAlignmentOptions.MidlineRight;
         RectTransform arrowRT = RT(arrowObj);
@@ -398,7 +401,7 @@ public class DialogueUIBuilder : MonoBehaviour
         GameObject nameTextObj = MakeUI("CharacterNameText", nameBadge.transform);
         nameTMP = nameTextObj.AddComponent<TextMeshProUGUI>();
         nameTMP.text             = "Character";
-        nameTMP.fontSize         = 13f;
+        nameTMP.fontSize         = 18f;
         nameTMP.fontStyle        = FontStyles.Bold;
         nameTMP.color            = Color.white;
         nameTMP.alignment        = TextAlignmentOptions.MidlineLeft;
@@ -421,7 +424,7 @@ public class DialogueUIBuilder : MonoBehaviour
         GameObject dtObj = MakeUI("DialogueText", dialogueBox.transform);
         dialogueTMP = dtObj.AddComponent<TextMeshProUGUI>();
         dialogueTMP.text             = "";
-        dialogueTMP.fontSize         = 17f;
+        dialogueTMP.fontSize         = 36f;
         dialogueTMP.color            = P3_TextColor;
         dialogueTMP.alignment        = TextAlignmentOptions.TopLeft;
         dialogueTMP.textWrappingMode = TextWrappingModes.Normal;
@@ -447,7 +450,7 @@ public class DialogueUIBuilder : MonoBehaviour
 
         TextMeshProUGUI chevTMP = chevObj.AddComponent<TextMeshProUGUI>();
         chevTMP.text      = "▼";
-        chevTMP.fontSize  = 13f;
+        chevTMP.fontSize  = 40f;
         chevTMP.color     = P3_Blue;
         chevTMP.alignment = TextAlignmentOptions.Center;
 
@@ -459,7 +462,7 @@ public class DialogueUIBuilder : MonoBehaviour
         chevRT.anchorMax        = new Vector2(1f, 0f);
         chevRT.pivot            = new Vector2(1f, 0f);
         chevRT.anchoredPosition = new Vector2(-20f, 16f);
-        chevRT.sizeDelta        = new Vector2(20f, 20f);
+        chevRT.sizeDelta        = new Vector2(32f, 32f);
 
         chevObj.SetActive(false);
     }
@@ -490,8 +493,9 @@ public class DialogueUIBuilder : MonoBehaviour
         cpRT.anchorMax        = new Vector2(0.5f, 0f);
         cpRT.pivot            = new Vector2(0.5f, 0f);
         // Posisi: tepat di atas dialogue box
-        cpRT.anchoredPosition = new Vector2(0f, panelHeight + 12f);
+        cpRT.anchoredPosition = new Vector2(-116f, 186f);
         cpRT.sizeDelta        = new Vector2(choicePanelWidth, 200f);
+        cpRT.localScale       = new Vector3(1.2f, 1.2f, 1.2f);
 
         // VerticalLayoutGroup agar tombol-tombol tersusun otomatis
         VerticalLayoutGroup vlg = choicePanel.AddComponent<VerticalLayoutGroup>();
@@ -559,7 +563,7 @@ public class DialogueUIBuilder : MonoBehaviour
         GameObject textObj = MakeUI("Label", btnGO.transform);
         TextMeshProUGUI tmp = textObj.AddComponent<TextMeshProUGUI>();
         tmp.text             = label;
-        tmp.fontSize         = 16f;
+        tmp.fontSize         = 24f;
         tmp.fontStyle        = FontStyles.Bold;
         tmp.color            = P3_TextColor;
         tmp.alignment        = TextAlignmentOptions.MidlineLeft;

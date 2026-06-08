@@ -79,9 +79,9 @@ public class DialogueManager : MonoBehaviour
     [Tooltip("Background Image pada name badge (parallelogram)")]
     public Image nameBadgeBackground;
     [Tooltip("Warna badge saat player yang berbicara")]
-    public Color playerNameColor = new Color(0.40f, 0.20f, 0.87f, 1f);   // Ungu
+    public Color playerNameColor = new Color(0.40f, 0.20f, 0.87f, 1f);
     [Tooltip("Warna badge saat NPC yang berbicara")]
-    public Color npcNameColor    = new Color(0.80f, 0.20f, 0.33f, 1f);   // Merah
+    public Color npcNameColor    = new Color(0.80f, 0.20f, 0.33f, 1f);
 
     // ─────────────────────────────────────────────
     //  PERSONA 3 STYLE — ACTIVE GLOW BORDER
@@ -102,6 +102,15 @@ public class DialogueManager : MonoBehaviour
     public CanvasGroup continueChevronGroup;
 
     // ─────────────────────────────────────────────
+    //  PORTRAIT TAG / MOOD SYSTEM
+    // ─────────────────────────────────────────────
+    [Header("Portrait Mood System")]
+    [Tooltip("Folder di Resources yang menyimpan semua sprite portrait.\n" +
+             "Nama file harus: {CharName}_{Tag}.png\n" +
+             "Contoh: MCT_Angry, FCT_Sad, MCT (untuk Normal)")]
+    public string portraitSpriteFolder = "CharacterSprites";
+
+    // ─────────────────────────────────────────────
     //  SETTINGS
     // ─────────────────────────────────────────────
     [Header("Settings")]
@@ -117,7 +126,7 @@ public class DialogueManager : MonoBehaviour
     // ─────────────────────────────────────────────
     [Header("Persona Style Shadow Settings")]
     public Color shadowColor = new Color(0.4f, 0f, 0.6f, 0.8f);
-    public Vector2 shadowOffset = new Vector2(8f, -8f);
+    public Vector2 shadowOffset = new Vector2(0f, 0f);
     public bool enableShadowPulse = true;
     public float shadowPulseSpeed = 2f;
     public float shadowPulseAmount = 0.15f;
@@ -132,8 +141,10 @@ public class DialogueManager : MonoBehaviour
 
     // ─────────────────────────────────────────────
     //  PLAYER CONTROLLER REFERENCE
+    //  Kosongkan array ini — LockPlayerMovement pakai CharacterSwitcher otomatis.
+    //  Isi hanya sebagai manual fallback jika tidak pakai CharacterSwitcher.
     // ─────────────────────────────────────────────
-    [Header("Player Controller Reference")]
+    [Header("Player Controller Reference (biasanya dikosongkan — pakai CharacterSwitcher)")]
     public MonoBehaviour[] playerControllers;
 
     // ─────────────────────────────────────────────
@@ -148,7 +159,7 @@ public class DialogueManager : MonoBehaviour
     private Queue<DialogueLine> dialogueQueue;
     private bool      isTyping          = false;
     private bool      dialogueActive    = false;
-    private bool      waitingForChoice  = false;   // ← NEW: sedang menunggu pilihan player
+    private bool      waitingForChoice  = false;
     private Coroutine typingCoroutine;
     private Coroutine portraitCoroutine;
     private float     shadowPulseTimer  = 0f;
@@ -158,7 +169,6 @@ public class DialogueManager : MonoBehaviour
     private float  _inputCooldown = 0f;
     private const float INPUT_COOLDOWN_DURATION = 0.35f;
 
-    // Choice buttons yang sedang aktif
     private List<GameObject> _activeChoiceButtons = new List<GameObject>();
 
     // Base anchoredPosition portrait (tanpa offset) — disimpan saat Start
@@ -166,6 +176,10 @@ public class DialogueManager : MonoBehaviour
     private Vector2 _npcShadowBasePos;
     private Vector2 _playerPortraitBasePos;
     private Vector2 _playerShadowBasePos;
+
+    // Cache sprite mood supaya tidak load ulang tiap frame
+    // Key: "MCT_Angry", "FCT_Normal", dst
+    private Dictionary<string, Sprite> _spriteCache = new Dictionary<string, Sprite>();
 
     // ═════════════════════════════════════════════
     //  AWAKE / START
@@ -209,10 +223,16 @@ public class DialogueManager : MonoBehaviour
         if (playerPortrait != null) _playerPortraitBasePos = playerPortrait.rectTransform.anchoredPosition;
         if (playerShadow   != null) _playerShadowBasePos   = playerShadow.rectTransform.anchoredPosition;
 
+        // Preserve aspect ratio supaya sprite MCT/FCT tidak distorsi
+        if (playerPortrait != null) playerPortrait.preserveAspect = true;
+        if (npcPortrait    != null) npcPortrait.preserveAspect    = true;
+        if (playerShadow   != null) playerShadow.preserveAspect   = true;
+        if (npcShadow      != null) npcShadow.preserveAspect      = true;
+
         HideContinueChevron(instant: true);
         HideChoicePanel();
 
-        if (enableDebugLogs) Debug.Log("✅ DialogueManager initialized — Persona 3 Style + Branching Choices!");
+        if (enableDebugLogs) Debug.Log("✅ DialogueManager initialized — Persona 3 Style + Mood Portrait System!");
     }
 
     // ─────────────────────────────────────────────
@@ -226,7 +246,7 @@ public class DialogueManager : MonoBehaviour
         {
             voiceAudioSource = gameObject.AddComponent<AudioSource>();
             voiceAudioSource.playOnAwake  = false;
-            voiceAudioSource.spatialBlend = 0f; // 2D sound
+            voiceAudioSource.spatialBlend = 0f;
             if (enableDebugLogs) Debug.Log("✅ DialogueManager: Voice AudioSource auto-created");
         }
     }
@@ -245,13 +265,81 @@ public class DialogueManager : MonoBehaviour
             voiceAudioSource.Stop();
     }
 
-    // ─────────────────────────────────────────────
-    //  ENSURE CHOICE PANEL EXISTS
-    // ─────────────────────────────────────────────
+    // ═════════════════════════════════════════════
+    //  MOOD PORTRAIT SYSTEM
+    //
+    //  Resolve sprite berdasarkan portraitTag + nama karakter aktif.
+    //
+    //  Untuk player line:
+    //    tag kosong / "Normal"  →  Resources/CharacterSprites/MCT   (atau FCT)
+    //    tag "Angry"            →  Resources/CharacterSprites/MCT_Angry
+    //
+    //  Untuk NPC line:
+    //    tag tidak kosong       →  Resources/CharacterSprites/{tag}  (nama file persis)
+    //    tag kosong             →  line.characterPortrait (manual)
+    // ═════════════════════════════════════════════
+
     /// <summary>
-    /// Jika choicePanel belum di-assign di Inspector, buat secara runtime
-    /// di atas DialoguePanel.
+    /// Ambil sprite berdasarkan portraitTag untuk player line.
+    /// Nama file: {CharName} untuk Normal, {CharName}_{Tag} untuk mood lain.
     /// </summary>
+    Sprite ResolvePlayerSprite(string portraitTag)
+    {
+        if (CharacterSwitcher.Instance == null ||
+            CharacterSwitcher.Instance.CharacterCount == 0)
+            return null;
+
+        var charData = CharacterSwitcher.Instance.GetCharacter(
+            CharacterSwitcher.Instance.ActiveIndex);
+        if (charData == null) return null;
+
+        string charName = charData.characterName; // mis. "MCT" atau "FCT"
+
+        // Tentukan nama file
+        string tag = string.IsNullOrEmpty(portraitTag) || portraitTag.ToLower() == "normal"
+            ? charName
+            : $"{charName}_{portraitTag}";
+
+        return LoadCachedSprite(tag, fallback: charData.thumbnail);
+    }
+
+    /// <summary>
+    /// Ambil sprite untuk NPC line berdasarkan portraitTag.
+    /// Jika tag kosong, pakai characterPortrait manual dari Inspector.
+    /// </summary>
+    Sprite ResolveNPCSprite(DialogueLine line)
+    {
+        if (!string.IsNullOrEmpty(line.portraitTag) &&
+            line.portraitTag.ToLower() != "normal")
+        {
+            return LoadCachedSprite(line.portraitTag, fallback: line.characterPortrait);
+        }
+        return line.characterPortrait;
+    }
+
+    /// <summary>
+    /// Load sprite dari Resources dengan cache.
+    /// key = nama file tanpa path prefix, mis. "MCT_Angry"
+    /// </summary>
+    Sprite LoadCachedSprite(string key, Sprite fallback = null)
+    {
+        if (_spriteCache.TryGetValue(key, out Sprite cached))
+            return cached != null ? cached : fallback;
+
+        string path    = $"{portraitSpriteFolder}/{key}";
+        Sprite loaded  = Resources.Load<Sprite>(path);
+
+        if (loaded == null && enableDebugLogs)
+            Debug.LogWarning($"⚠️ DialogueManager: Sprite tidak ditemukan di Resources/{path}\n" +
+                             "Pastikan nama file cocok dan Texture Type = Sprite (2D and UI)");
+
+        _spriteCache[key] = loaded;
+        return loaded != null ? loaded : fallback;
+    }
+
+    // ═════════════════════════════════════════════
+    //  ENSURE CHOICE PANEL EXISTS
+    // ═════════════════════════════════════════════
     void EnsureChoicePanel()
     {
         if (choicePanel != null) return;
@@ -264,14 +352,12 @@ public class DialogueManager : MonoBehaviour
         cp.transform.SetParent(parentCanvas.transform, false);
 
         RectTransform cpRT = cp.GetComponent<RectTransform>();
-        // Posisi: di tengah bawah layar, di atas dialogue box
         cpRT.anchorMin        = new Vector2(0.5f, 0f);
         cpRT.anchorMax        = new Vector2(0.5f, 0f);
         cpRT.pivot            = new Vector2(0.5f, 0f);
-        cpRT.anchoredPosition = new Vector2(0f, 160f);   // 160 = di atas dialogue box ~150px
+        cpRT.anchoredPosition = new Vector2(0f, 160f);
         cpRT.sizeDelta        = new Vector2(600f, 200f);
 
-        // Layout vertikal agar tombol tersusun rapi
         VerticalLayoutGroup vlg = cp.AddComponent<VerticalLayoutGroup>();
         vlg.spacing            = 10f;
         vlg.childAlignment     = TextAnchor.MiddleCenter;
@@ -281,11 +367,9 @@ public class DialogueManager : MonoBehaviour
         vlg.childForceExpandHeight = false;
         vlg.padding = new RectOffset(20, 20, 10, 10);
 
-        // ContentSizeFitter biar panel ikut tinggi tombol
         ContentSizeFitter csf = cp.AddComponent<ContentSizeFitter>();
         csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        // Atas semua UI kecuali overlay
         cp.transform.SetAsLastSibling();
 
         choicePanel = cp;
@@ -332,7 +416,6 @@ public class DialogueManager : MonoBehaviour
 
     void OnTapToContinue()
     {
-        // Jangan lanjut kalau sedang menunggu pilihan
         if (waitingForChoice) return;
         if (_inputCooldown > 0f) return;
         if (isTyping) StopTyping();
@@ -390,8 +473,6 @@ public class DialogueManager : MonoBehaviour
     void Update()
     {
         if (!dialogueActive) return;
-
-        // Jangan proses keyboard/joystick input saat menunggu pilihan
         if (waitingForChoice) return;
 
         if (_inputCooldown > 0f)
@@ -454,10 +535,14 @@ public class DialogueManager : MonoBehaviour
 
         _inputCooldown = INPUT_COOLDOWN_DURATION;
 
+        // Sembunyikan kedua portrait dulu sebelum line pertama di-render
+        // supaya tidak muncul sprite lama / kotak kosong saat panel fade-in
+        HidePortraitInstant(playerPortrait, playerShadow);
+        HidePortraitInstant(npcPortrait,    npcShadow);
+
         StartCoroutine(ShowDialoguePanel());
 
-        // FIX: Paksa tutup Phone jika sedang terbuka sebelum dialogue dimulai
-        // supaya dialogue UI tidak tertimpa PhoneUI.
+        // Tutup Phone jika terbuka
         var phoneManager = UnityEngine.Object.FindFirstObjectByType<PhoneManager>();
         if (phoneManager != null && phoneManager.IsPhoneOpen)
             phoneManager.ClosePhone();
@@ -487,7 +572,7 @@ public class DialogueManager : MonoBehaviour
         currentLine = dialogueQueue.Dequeue();
 
         if (enableDebugLogs)
-            Debug.Log($"💬 {currentLine.characterName}: \"{currentLine.dialogue}\"");
+            Debug.Log($"💬 {currentLine.characterName} [{currentLine.portraitTag}]: \"{currentLine.dialogue}\"");
 
         if (characterNameText != null)
             characterNameText.text = currentLine.characterName;
@@ -496,7 +581,6 @@ public class DialogueManager : MonoBehaviour
         UpdatePortraitsAndShadows(currentLine);
         UpdateGlowBorders(currentLine);
 
-        // ── Play voice clip jika ada ──
         PlayVoiceClip(currentLine.voiceClip);
 
         HideContinueChevron(instant: true);
@@ -508,7 +592,7 @@ public class DialogueManager : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────
-    //  UPDATE NAME BADGE COLOR + POSISI (Persona 3 style)
+    //  UPDATE NAME BADGE COLOR
     // ─────────────────────────────────────────────
     void UpdateNameBadgeColor(DialogueLine line)
     {
@@ -518,7 +602,6 @@ public class DialogueManager : MonoBehaviour
 
         if (line.isPlayer)
         {
-            // Player — badge di kiri bawah, warna ungu
             nameBadgeBackground.color = playerNameColor;
             badgeRT.anchorMin        = new Vector2(0f, 1f);
             badgeRT.anchorMax        = new Vector2(0f, 1f);
@@ -527,7 +610,6 @@ public class DialogueManager : MonoBehaviour
         }
         else
         {
-            // NPC — badge di kanan bawah, warna merah
             nameBadgeBackground.color = npcNameColor;
             badgeRT.anchorMin        = new Vector2(1f, 1f);
             badgeRT.anchorMax        = new Vector2(1f, 1f);
@@ -540,69 +622,123 @@ public class DialogueManager : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────
-    //  UPDATE PORTRAITS (Persona 3: zoom active, dim passive)
+    //  UPDATE PORTRAITS — Mood Tag System
     // ─────────────────────────────────────────────
     void UpdatePortraitsAndShadows(DialogueLine line)
     {
+        Sprite resolvedSprite = line.isPlayer
+            ? ResolvePlayerSprite(line.portraitTag)
+            : ResolveNPCSprite(line);
+
         if (line.isPlayer)
         {
+            // ── Portrait Player (aktif) ──
             if (playerPortrait != null)
             {
-                playerPortrait.sprite = line.characterPortrait;
-                playerPortrait.color  = Color.white;
+                if (resolvedSprite != null)
+                {
+                    playerPortrait.sprite = resolvedSprite;
+                    playerPortrait.color  = Color.white;
+                }
+                else
+                {
+                    // Tidak ada sprite — sembunyikan
+                    playerPortrait.color = Color.clear;
+                }
             }
-            if (playerShadow != null && line.characterPortrait != null)
+            if (playerShadow != null)
             {
-                playerShadow.sprite = line.characterPortrait;
-                Color sc = shadowColor; sc.a = 0.8f;
-                playerShadow.color = sc;
+                if (resolvedSprite != null)
+                {
+                    playerShadow.sprite = resolvedSprite;
+                    Color sc = shadowColor; sc.a = 0.8f;
+                    playerShadow.color = sc;
+                }
+                else playerShadow.color = Color.clear;
             }
-            float b = passiveBrightness;
+
+            // ── Portrait NPC (pasif) ──
+            // Hanya tampilkan jika npcPortrait sudah punya sprite (sudah berbicara sebelumnya)
             if (npcPortrait != null)
-                npcPortrait.color = new Color(b, b, b, 0.8f);
+            {
+                if (npcPortrait.sprite != null)
+                {
+                    float b = passiveBrightness;
+                    npcPortrait.color = new Color(b, b, b, 0.8f);
+                }
+                else npcPortrait.color = Color.clear; // belum punya sprite → sembunyikan
+            }
             if (npcShadow != null)
             {
-                Color dc = shadowColor; dc.a = 0.2f;
-                npcShadow.color = dc;
+                if (npcShadow.sprite != null && npcPortrait != null && npcPortrait.color.a > 0f)
+                {
+                    Color dc = shadowColor; dc.a = 0.2f;
+                    npcShadow.color = dc;
+                }
+                else npcShadow.color = Color.clear;
             }
+
             AnimatePortraitSizes(
                 playerPortrait?.rectTransform, npcPortrait?.rectTransform,
                 playerShadow?.rectTransform,   npcShadow?.rectTransform);
         }
         else
         {
+            // ── Portrait NPC (aktif) ──
             if (npcPortrait != null)
             {
-                npcPortrait.sprite = line.characterPortrait;
-                npcPortrait.color  = Color.white;
+                if (resolvedSprite != null)
+                {
+                    npcPortrait.sprite = resolvedSprite;
+                    npcPortrait.color  = Color.white;
+                }
+                else
+                {
+                    npcPortrait.color = Color.clear;
+                }
             }
-            if (npcShadow != null && line.characterPortrait != null)
+            if (npcShadow != null)
             {
-                npcShadow.sprite = line.characterPortrait;
-                Color sc = shadowColor; sc.a = 0.8f;
-                npcShadow.color = sc;
+                if (resolvedSprite != null)
+                {
+                    npcShadow.sprite = resolvedSprite;
+                    Color sc = shadowColor; sc.a = 0.8f;
+                    npcShadow.color = sc;
+                }
+                else npcShadow.color = Color.clear;
             }
-            float b = passiveBrightness;
+
+            // ── Portrait Player (pasif) ──
+            // Hanya tampilkan jika playerPortrait sudah punya sprite
             if (playerPortrait != null)
-                playerPortrait.color = new Color(b, b, b, 0.8f);
+            {
+                if (playerPortrait.sprite != null)
+                {
+                    float b = passiveBrightness;
+                    playerPortrait.color = new Color(b, b, b, 0.8f);
+                }
+                else playerPortrait.color = Color.clear; // belum punya sprite → sembunyikan
+            }
             if (playerShadow != null)
             {
-                Color dc = shadowColor; dc.a = 0.2f;
-                playerShadow.color = dc;
+                if (playerShadow.sprite != null && playerPortrait != null && playerPortrait.color.a > 0f)
+                {
+                    Color dc = shadowColor; dc.a = 0.2f;
+                    playerShadow.color = dc;
+                }
+                else playerShadow.color = Color.clear;
             }
+
             AnimatePortraitSizes(
                 npcPortrait?.rectTransform,    playerPortrait?.rectTransform,
                 npcShadow?.rectTransform,      playerShadow?.rectTransform);
         }
 
-        // Apply offset posisi (dari NPCInteractable) setiap kali portrait diupdate
         ApplyPortraitOffsets();
     }
 
     // ─────────────────────────────────────────────
     //  APPLY PORTRAIT OFFSETS
-    //  Dipanggil setiap kali portrait diupdate.
-    //  Base position + offset dari NPCInteractable.
     // ─────────────────────────────────────────────
     void ApplyPortraitOffsets()
     {
@@ -621,6 +757,25 @@ public class DialogueManager : MonoBehaviour
         if (playerShadow != null)
             playerShadow.rectTransform.anchoredPosition =
                 _playerShadowBasePos + playerPortraitOffset + new Vector2(5f, -5f);
+    }
+
+    // ─────────────────────────────────────────────
+    //  HIDE PORTRAIT INSTANT
+    //  Dipanggil saat StartDialogue untuk reset state portrait
+    //  supaya tidak ada sprite lama / kotak kosong muncul di awal.
+    // ─────────────────────────────────────────────
+    void HidePortraitInstant(Image portrait, Image shadow)
+    {
+        if (portrait != null)
+        {
+            portrait.color  = Color.clear;
+            portrait.sprite = null;
+        }
+        if (shadow != null)
+        {
+            shadow.color  = Color.clear;
+            shadow.sprite = null;
+        }
     }
 
     // ─────────────────────────────────────────────
@@ -671,7 +826,6 @@ public class DialogueManager : MonoBehaviour
     // ─────────────────────────────────────────────
     void UpdateGlowBorders(DialogueLine line)
     {
-        // Glow border dinonaktifkan — cukup gunakan brightness portrait untuk efek aktif/pasif
         if (playerGlowBorder != null) playerGlowBorder.SetActive(false);
         if (npcGlowBorder    != null) npcGlowBorder.SetActive(false);
     }
@@ -696,11 +850,8 @@ public class DialogueManager : MonoBehaviour
 
         isTyping = false;
 
-        // ── Setelah selesai mengetik, cek apakah ada choices ──
         if (currentLine != null && currentLine.hasChoices && currentLine.choices != null && currentLine.choices.Count > 0)
-        {
             ShowChoices(currentLine.choices);
-        }
         else
         {
             if (continueButton != null) continueButton.SetActive(true);
@@ -716,16 +867,10 @@ public class DialogueManager : MonoBehaviour
             dialogueText.text = currentLine.dialogue;
 
         isTyping = false;
-
-        // Stop voice juga saat player skip — opsional, hapus baris ini
-        // kalau mau voice tetap lanjut meski teks sudah skip
         StopVoiceClip();
 
-        // ── Setelah skip typing, cek choices ──
         if (currentLine != null && currentLine.hasChoices && currentLine.choices != null && currentLine.choices.Count > 0)
-        {
             ShowChoices(currentLine.choices);
-        }
         else
         {
             if (continueButton != null) continueButton.SetActive(true);
@@ -736,11 +881,6 @@ public class DialogueManager : MonoBehaviour
     // ═════════════════════════════════════════════
     //  CHOICE SYSTEM
     // ═════════════════════════════════════════════
-
-    /// <summary>
-    /// Tampilkan panel pilihan Persona 3 style.
-    /// Semua pilihan di-tap langsung oleh player.
-    /// </summary>
     void ShowChoices(List<DialogueChoice> choices)
     {
         if (choicePanel == null)
@@ -750,7 +890,7 @@ public class DialogueManager : MonoBehaviour
         }
 
         waitingForChoice = true;
-        SetTapOverlayActive(false);   // nonaktifkan tap-to-continue agar tidak konflik
+        SetTapOverlayActive(false);
         HideContinueChevron(instant: true);
         if (continueButton != null) continueButton.SetActive(false);
 
@@ -780,23 +920,19 @@ public class DialogueManager : MonoBehaviour
         }
         else
         {
-            // ── Buat button runtime — Persona 3 Reload accurate style ──
             btnGO = new GameObject("ChoiceButton", typeof(RectTransform));
             btnGO.transform.SetParent(choicePanel.transform, false);
 
             RectTransform rt = btnGO.GetComponent<RectTransform>();
             rt.sizeDelta = new Vector2(520f, 50f);
 
-            // Background gelap navy
             Image bg = btnGO.AddComponent<Image>();
             bg.color = choiceNormalColor;
 
-            // Border outline biru tipis
             Outline border = btnGO.AddComponent<Outline>();
             border.effectColor    = new Color(choiceHighlightColor.r, choiceHighlightColor.g, choiceHighlightColor.b, 0.55f);
             border.effectDistance = new Vector2(1f, 1f);
 
-            // Left accent bar biru solid
             GameObject accentBar = new GameObject("LeftAccentBar", typeof(RectTransform));
             accentBar.transform.SetParent(btnGO.transform, false);
             Image accentImg = accentBar.AddComponent<Image>();
@@ -808,7 +944,6 @@ public class DialogueManager : MonoBehaviour
             acRT.anchoredPosition = Vector2.zero;
             acRT.sizeDelta        = new Vector2(4f, 0f);
 
-            // Right arrow (▶ samar di kanan)
             GameObject rightArrow = new GameObject("RightArrow", typeof(RectTransform));
             rightArrow.transform.SetParent(btnGO.transform, false);
             TextMeshProUGUI raTMP = rightArrow.AddComponent<TextMeshProUGUI>();
@@ -822,12 +957,11 @@ public class DialogueManager : MonoBehaviour
             raRT.offsetMin = new Vector2(0f, 0f);
             raRT.offsetMax = new Vector2(-12f, 0f);
 
-            // Label teks
             GameObject textGO = new GameObject("Label", typeof(RectTransform));
             textGO.transform.SetParent(btnGO.transform, false);
             TextMeshProUGUI tmp = textGO.AddComponent<TextMeshProUGUI>();
             tmp.text             = text;
-            tmp.fontSize         = 16f;
+            tmp.fontSize         = 24f;
             tmp.fontStyle        = FontStyles.Bold;
             tmp.color            = choiceTextColor;
             tmp.alignment        = TextAlignmentOptions.MidlineLeft;
@@ -838,7 +972,6 @@ public class DialogueManager : MonoBehaviour
             tRT.offsetMin = new Vector2(18f, 4f);
             tRT.offsetMax = new Vector2(-28f, -4f);
 
-            // Button component dengan ColorTint
             Button btn = btnGO.AddComponent<Button>();
             btn.transition    = Selectable.Transition.ColorTint;
             btn.targetGraphic = bg;
@@ -851,7 +984,6 @@ public class DialogueManager : MonoBehaviour
             btn.colors = cb;
         }
 
-        // Assign click handler — capture variable agar closure benar
         Button buttonComp = btnGO.GetComponent<Button>();
         if (buttonComp == null) buttonComp = btnGO.AddComponent<Button>();
 
@@ -1060,15 +1192,92 @@ public class DialogueManager : MonoBehaviour
         onComplete?.Invoke();
     }
 
+    // ─────────────────────────────────────────────
+    //  LOCK PLAYER MOVEMENT
+    //  Dinamis — selalu ambil dari CharacterSwitcher.Instance.CurrentInstance
+    //  sehingga tetap bekerja setelah character switch (MCT ↔ FCT).
+    // ─────────────────────────────────────────────
     void LockPlayerMovement(bool locked)
     {
-        if (playerControllers != null && playerControllers.Length > 0)
+        bool handled = false;
+
+        // ── Utama: CharacterSwitcher (support dynamic switch) ──
+        if (CharacterSwitcher.Instance != null &&
+            CharacterSwitcher.Instance.CurrentInstance != null)
+        {
+            GameObject playerGO = CharacterSwitcher.Instance.CurrentInstance;
+
+            // 1. Disable PlayerMovement
+            var pm = playerGO.GetComponent<PlayerMovement>();
+            if (pm != null)
+            {
+                pm.enabled = !locked;
+                handled = true;
+            }
+
+            // 2. Disable semua MonoBehaviour lain yang namanya mengandung
+            //    kata terkait movement — jaga-jaga kalau MCT/FCT punya
+            //    script tambahan (misalnya ThirdPersonController, PlayerInput, dll)
+            foreach (var mb in playerGO.GetComponents<MonoBehaviour>())
+            {
+                if (mb == null || mb == pm) continue;
+                string typeName = mb.GetType().Name.ToLower();
+                if (typeName.Contains("movement") ||
+                    typeName.Contains("motor")    ||
+                    typeName.Contains("controller") && typeName.Contains("player") ||
+                    typeName.Contains("input")    && typeName.Contains("player"))
+                {
+                    mb.enabled = !locked;
+                    if (enableDebugLogs)
+                        Debug.Log($"🔒 DialogueManager: Also {(locked ? "disabled" : "enabled")} → {mb.GetType().Name}");
+                }
+            }
+
+            // 3. Zero velocity (Rigidbody)
+            var rb = playerGO.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                if (locked)
+                {
+                    rb.linearVelocity  = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+                rb.isKinematic = locked; // freeze physics sepenuhnya saat dialogue
+            }
+
+            // 4. Stop CharacterController jika ada
+            var cc = playerGO.GetComponent<CharacterController>();
+            if (cc != null)
+                cc.enabled = !locked;
+
+            // 5. Stop animator — coba beberapa nama parameter umum
+            var anim = playerGO.GetComponent<Animator>();
+            if (anim != null && locked)
+            {
+                // Coba reset semua parameter float ke 0
+                foreach (var param in anim.parameters)
+                {
+                    if (param.type == AnimatorControllerParameterType.Float)
+                        anim.SetFloat(param.name, 0f);
+                    else if (param.type == AnimatorControllerParameterType.Bool &&
+                             (param.name.ToLower().Contains("walk") ||
+                              param.name.ToLower().Contains("run")  ||
+                              param.name.ToLower().Contains("move")))
+                        anim.SetBool(param.name, false);
+                }
+            }
+
+            if (enableDebugLogs)
+                Debug.Log($"🔒 DialogueManager: Player {(locked ? "LOCKED" : "UNLOCKED")} ({playerGO.name})");
+        }
+
+        // ── Fallback: manual array di Inspector ──
+        if (!handled && playerControllers != null && playerControllers.Length > 0)
         {
             foreach (MonoBehaviour ctrl in playerControllers)
                 if (ctrl != null) ctrl.enabled = !locked;
-
             if (enableDebugLogs)
-                Debug.Log($"🔒 DialogueManager: Player movement {(locked ? "locked" : "unlocked")}");
+                Debug.Log($"🔒 DialogueManager: Player movement {(locked ? "locked" : "unlocked")} via Inspector array");
         }
 
         Cursor.lockState = locked ? CursorLockMode.None : CursorLockMode.Locked;
@@ -1086,4 +1295,10 @@ public class DialogueManager : MonoBehaviour
         if (playerShadow != null) playerShadow.color = shadowColor;
         if (npcShadow    != null) npcShadow.color    = shadowColor;
     }
+
+    /// <summary>
+    /// Clear sprite cache — dipanggil otomatis tidak perlu, tapi bisa
+    /// dipanggil manual jika sprite di-reload runtime.
+    /// </summary>
+    public void ClearSpriteCache() => _spriteCache.Clear();
 }

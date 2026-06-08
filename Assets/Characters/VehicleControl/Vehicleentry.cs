@@ -21,6 +21,9 @@ public class VehicleEntry : MonoBehaviour
     private bool               playerInside = false;
     private bool               playerNearby = false;
 
+    /// <summary>Kendaraan yang sedang aktif dikendarai. Null kalau player jalan kaki.</summary>
+    public static VehicleEntry ActiveVehicle { get; private set; }
+
     void Awake()
     {
         vehicle = GetComponent<VehicleController>();
@@ -96,6 +99,7 @@ public class VehicleEntry : MonoBehaviour
 
         playerInside = true;
         playerNearby = false;
+        ActiveVehicle = this;
 
         SetInteractLabel("KELUAR");
 
@@ -107,6 +111,10 @@ public class VehicleEntry : MonoBehaviour
 
         vehicle.EnterVehicle(localPlayer);
 
+        // Sembunyikan tombol RUN / TPP-FPP / PHONE — sisa joystick + INTERACT
+        if (FloatingJoystick.Instance != null)
+            FloatingJoystick.Instance.SetVehicleMode(true);
+
         if (MinimapSystem.Instance != null)
             MinimapSystem.Instance.SetTrackedTarget(this.transform);
 
@@ -117,11 +125,16 @@ public class VehicleEntry : MonoBehaviour
     {
         if (!playerInside || localPlayer == null) return;
 
-        playerInside = false;
+        playerInside  = false;
+        ActiveVehicle = null;
 
         SetInteractLabel("INTERACT");
 
         vehicle.ExitVehicle(localPlayer);
+
+        // Tampilkan kembali semua tombol
+        if (FloatingJoystick.Instance != null)
+            FloatingJoystick.Instance.SetVehicleMode(false);
 
         if (MinimapSystem.Instance != null)
             MinimapSystem.Instance.ResetTrackedTarget();

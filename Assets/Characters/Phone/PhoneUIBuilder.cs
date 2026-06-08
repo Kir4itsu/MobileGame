@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
 using System.Collections;
 
@@ -56,6 +57,7 @@ public class PhoneUIBuilder : MonoBehaviour
     private GameObject        _phoneUI;
     private GameObject        _homePanel;
     private GameObject        _musicPanel;
+    private GameObject        _characterPanel;   // Panel pilih karakter
     private Text              _clockText;
     private AudioSource       _audioSource;
 
@@ -98,34 +100,42 @@ public class PhoneUIBuilder : MonoBehaviour
 
     // ═════════════════════════════════════════════════════════════
     //  CANVAS
+    //  FIX: Buat canvas SENDIRI khusus PhoneUI (sortingOrder 200).
+    //  Tidak meng-grab / memodifikasi canvas scene yang sudah ada,
+    //  sehingga UI game lain (joystick, minimap, dll) tidak terganggu.
     // ═════════════════════════════════════════════════════════════
     Canvas FindOrCreateCanvas()
     {
-        Canvas c = FindFirstObjectByType<Canvas>();
-
-        if (c != null)
+        // Cari canvas PhoneUI milik kita sendiri (kalau sudah ada, pakai itu)
+        var existing = GameObject.Find("PhoneUICanvas");
+        if (existing != null)
         {
-            // FIX: Patch CanvasScaler yang sudah ada di scene → landscape reference + match height
-            var existingCs = c.GetComponent<CanvasScaler>();
-            if (existingCs != null)
-            {
-                existingCs.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                existingCs.referenceResolution = new Vector2(1920f, 1080f);
-                existingCs.matchWidthOrHeight  = 1f;
-                Debug.Log("[PhoneUIBuilder] CanvasScaler di-patch ke 1920x1080 matchHeight=1");
-            }
-            return c;
+            var ec = existing.GetComponent<Canvas>();
+            if (ec != null) return ec;
         }
 
-        var go     = new GameObject("MainCanvas");
-        c          = go.AddComponent<Canvas>();
+        var go = new GameObject("PhoneUICanvas");
+        var c  = go.AddComponent<Canvas>();
         c.renderMode   = RenderMode.ScreenSpaceOverlay;
-        c.sortingOrder = 100;
-        var cs     = go.AddComponent<CanvasScaler>();
+        c.sortingOrder = 200; // di atas JoystickCanvas (999 → lebih tinggi nanti kalau perlu)
+
+        var cs = go.AddComponent<CanvasScaler>();
         cs.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         cs.referenceResolution = new Vector2(1920f, 1080f);
-        cs.matchWidthOrHeight  = 1f;
+        cs.matchWidthOrHeight  = 1f; // match height — cocok untuk HP landscape
+        cs.screenMatchMode     = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+
         go.AddComponent<GraphicRaycaster>();
+
+        // Pastikan ada EventSystem di scene
+        if (FindFirstObjectByType<EventSystem>() == null)
+        {
+            var es = new GameObject("EventSystem");
+            es.AddComponent<EventSystem>();
+            es.AddComponent<StandaloneInputModule>();
+        }
+
+        Debug.Log("[PhoneUIBuilder] PhoneUICanvas baru dibuat (sortingOrder=200).");
         return c;
     }
 
@@ -188,22 +198,17 @@ public class PhoneUIBuilder : MonoBehaviour
         _phoneUI = new GameObject("PhoneUI");
         _phoneUI.transform.SetParent(_canvas.transform, false);
 
-        // FIX: Ukuran HP proporsional terhadap tinggi layar referensi (1080px).
-        // Dengan matchWidthOrHeight=1 (match height) pada CanvasScaler referensi 1920x1080,
-        // semua nilai di bawah akan di-scale otomatis sesuai tinggi layar aktual.
-        // phoneHeight = 85% dari ref height (918px di 1080p) — cukup untuk isi konten
-        // phoneWidth  = 48% dari ref height supaya tampak seperti HP portrait di layar landscape
-        float refH          = 1080f;
-        float phoneHeight   = refH * 0.85f;          // 918px @ 1080p ref
-        float phoneWidth    = refH * 0.48f;          // 518px @ 1080p ref (rasio ~9:16.5)
-        float marginRight   = refH * 0.05f;          // 54px dari kanan
-        float marginBottom  = refH * 0.05f;          // 54px dari bawah
+        // Posisi: pojok kanan layar, vertikal center
+        float refH        = 1080f;
+        float phoneHeight = refH * 0.85f;   // 918px
+        float phoneWidth  = refH * 0.48f;   // ~518px
+        float marginRight = 10f;            // jarak dari tepi kanan
 
         var rt = _phoneUI.AddComponent<RectTransform>();
-        rt.anchorMin        = new Vector2(1f, 0f);
-        rt.anchorMax        = new Vector2(1f, 0f);
-        rt.pivot            = new Vector2(1f, 0f);
-        rt.anchoredPosition = new Vector2(-marginRight, marginBottom);
+        rt.anchorMin        = new Vector2(1f, 0.5f);
+        rt.anchorMax        = new Vector2(1f, 0.5f);
+        rt.pivot            = new Vector2(1f, 0.5f);
+        rt.anchoredPosition = new Vector2(-marginRight, -60f); // nempel kanan, sedikit di bawah center
         rt.sizeDelta        = new Vector2(phoneWidth, phoneHeight);
 
         // Bodi HP (hitam dengan border abu-abu)
@@ -230,15 +235,20 @@ public class PhoneUIBuilder : MonoBehaviour
 
         // ── Konten di dalam screen ────────────────
         BuildStatusBar(screen.transform);
-        _homePanel  = BuildHomePanel(screen.transform);
-        _menuItemCount = _menuItems.Count;
-        _musicPanel = BuildMusicPanel(screen.transform);
+        _homePanel       = BuildHomePanel(screen.transform);
+        _menuItemCount   = _menuItems.Count;
+        _musicPanel      = BuildMusicPanel(screen.transform);
+        _characterPanel  = BuildCharacterPanel(screen.transform);
 
         // Nav bar bawah
         BuildNavBar(screen.transform);
 
-        // Sembunyikan music panel di awal
+        // Sembunyikan panel sub-app di awal
+        // PENTING: CharacterSelectPanel di dalam _characterPanel harus tetap aktif
+        // supaya coroutine LateStart() bisa jalan dan BuildGrid() terpanggil.
+        // Yang di-disable hanya wrapper CharacterPanel-nya.
         _musicPanel.SetActive(false);
+        _characterPanel.SetActive(false);
         _phoneUI.SetActive(false);
     }
 
@@ -391,8 +401,8 @@ public class PhoneUIBuilder : MonoBehaviour
         hrt.sizeDelta = new Vector2(-14f, 24f);
 
         // Menu items
-        string[] labels = { "Music Player", "Messages", "Contacts", "Camera", "Multiplayer", "Settings" };
-        bool[]   sel    = { true, false, false, false, false, false };
+        string[] labels = { "Music Player", "Messages", "Contacts", "Camera", "Characters", "Multiplayer", "Settings" };
+        bool[]   sel    = { true, false, false, false, false, false, false };
 
         for (int i = 0; i < labels.Length; i++)
         {
@@ -478,6 +488,31 @@ public class PhoneUIBuilder : MonoBehaviour
                     _cameraMode.OpenCamera();
                 else
                     Debug.LogWarning("[PhoneUIBuilder] CameraMode belum di-wire!");
+            });
+        }
+
+        // Tombol Characters — buka CharacterSelectPanel di dalam HP
+        if (label == "Characters")
+        {
+            var btn = item.AddComponent<Button>();
+            var cb  = btn.colors;
+            cb.normalColor      = Color.clear;
+            cb.highlightedColor = new Color(1,1,1,0.05f);
+            cb.pressedColor     = new Color(0,0,0,0.2f);
+            btn.colors = cb;
+            btn.targetGraphic = bg;
+            btn.onClick.AddListener(() => {
+                if (_characterPanel != null && _phoneNavigator != null)
+                {
+                    _phoneNavigator.OpenPanel(_characterPanel);
+                    // Force rebuild layout supaya grid & card langsung tampil
+                    Canvas.ForceUpdateCanvases();
+                    var grid = _characterPanel.GetComponentInChildren<GridLayoutGroup>(true);
+                    if (grid != null)
+                        LayoutRebuilder.ForceRebuildLayoutImmediate(grid.GetComponent<RectTransform>());
+                }
+                else
+                    Debug.LogWarning("[PhoneUIBuilder] _characterPanel atau _phoneNavigator null!");
             });
         }
 
@@ -770,6 +805,185 @@ public class PhoneUIBuilder : MonoBehaviour
         return panel;
     }
 
+    // ─────────────────────────────────────────────
+    //  CHARACTER PANEL — Carousel Style
+    //  1 karakter besar di tengah, panah kiri/kanan
+    //  untuk ganti karakter. Generate otomatis.
+    // ─────────────────────────────────────────────
+    GameObject BuildCharacterPanel(Transform parent)
+    {
+        // ── Root panel ────────────────────────────────────────────
+        var panel = new GameObject("CharacterPanel");
+        panel.transform.SetParent(parent, false);
+        var rt = panel.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 0f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.offsetMin = new Vector2(0f,  50f);
+        rt.offsetMax = new Vector2(0f, -36f);
+        panel.AddComponent<Image>().color = C_BG_PANEL;
+
+        // ── Header ───────────────────────────────────────────────
+        var header = new GameObject("Header");
+        header.transform.SetParent(panel.transform, false);
+        var hrt = header.AddComponent<RectTransform>();
+        hrt.anchorMin = new Vector2(0f, 1f); hrt.anchorMax = new Vector2(1f, 1f);
+        hrt.pivot     = new Vector2(0.5f, 1f);
+        hrt.anchoredPosition = Vector2.zero;
+        hrt.sizeDelta = new Vector2(0f, 50f);
+        header.AddComponent<Image>().color = C_BG_HEADER;
+
+        var htxt = MakeText(header.transform, "CHARACTERS", 25, C_GREEN,
+                            TextAnchor.MiddleLeft, FontStyle.Bold);
+        var htrt = htxt.GetComponent<RectTransform>();
+        FillRect(htrt); htrt.offsetMin = new Vector2(12f, 0f);
+
+        // ── Area konten (di bawah header) ─────────────────────────
+        var content = new GameObject("CarouselRoot");
+        content.transform.SetParent(panel.transform, false);
+        var contentRT = content.AddComponent<RectTransform>();
+        contentRT.anchorMin = new Vector2(0f, 0f);
+        contentRT.anchorMax = new Vector2(1f, 1f);
+        contentRT.offsetMin = new Vector2(0f, 0f);
+        contentRT.offsetMax = new Vector2(0f, -50f);
+        content.AddComponent<Image>().color = Color.clear;
+
+        // ── Thumbnail besar di tengah ─────────────────────────────
+        var thumbBG = new GameObject("ThumbBG");
+        thumbBG.transform.SetParent(content.transform, false);
+        var tbRT = thumbBG.AddComponent<RectTransform>();
+        tbRT.anchorMin = new Vector2(0.15f, 0.25f);
+        tbRT.anchorMax = new Vector2(0.85f, 0.85f);
+        tbRT.offsetMin = tbRT.offsetMax = Vector2.zero;
+        thumbBG.AddComponent<Image>().color = new Color(0.1f, 0.1f, 0.1f, 1f);
+
+        var thumbImg = new GameObject("CharThumbnail");
+        thumbImg.transform.SetParent(thumbBG.transform, false);
+        var tiRT = thumbImg.AddComponent<RectTransform>();
+        tiRT.anchorMin = new Vector2(0.05f, 0.05f);
+        tiRT.anchorMax = new Vector2(0.95f, 0.95f);
+        tiRT.offsetMin = tiRT.offsetMax = Vector2.zero;
+        var charImg = thumbImg.AddComponent<Image>();
+        charImg.preserveAspect = true;
+        thumbImg.name = "CharThumbnail";
+
+        // Garis bawah hijau (selected indicator)
+        var indicator = new GameObject("Indicator");
+        indicator.transform.SetParent(thumbBG.transform, false);
+        var indRT = indicator.AddComponent<RectTransform>();
+        indRT.anchorMin = new Vector2(0f, 0f); indRT.anchorMax = new Vector2(1f, 0f);
+        indRT.pivot     = new Vector2(0.5f, 0f);
+        indRT.anchoredPosition = Vector2.zero;
+        indRT.sizeDelta = new Vector2(0f, 4f);
+        indicator.AddComponent<Image>().color = C_GREEN;
+
+        // ── Nama karakter ─────────────────────────────────────────
+        var nameGO = new GameObject("CharNameLabel");
+        nameGO.transform.SetParent(content.transform, false);
+        var nameRT = nameGO.AddComponent<RectTransform>();
+        nameRT.anchorMin = new Vector2(0.15f, 0.14f);
+        nameRT.anchorMax = new Vector2(0.85f, 0.26f);
+        nameRT.offsetMin = nameRT.offsetMax = Vector2.zero;
+        var nameTMP = nameGO.AddComponent<TextMeshProUGUI>();
+        nameTMP.text      = "";
+        nameTMP.fontSize  = 26;
+        nameTMP.color     = C_WHITE;
+        nameTMP.alignment = TextAlignmentOptions.Center;
+        nameTMP.fontStyle = FontStyles.Bold;
+        nameTMP.raycastTarget = false;
+        nameGO.name = "CharNameLabel";
+
+        // ── Dot indicator (titik pager bawah) ─────────────────────
+        var dotsGO = new GameObject("Dots");
+        dotsGO.transform.SetParent(content.transform, false);
+        var dotsRT = dotsGO.AddComponent<RectTransform>();
+        dotsRT.anchorMin = new Vector2(0.2f, 0.06f);
+        dotsRT.anchorMax = new Vector2(0.8f, 0.14f);
+        dotsRT.offsetMin = dotsRT.offsetMax = Vector2.zero;
+        var dotsHLG = dotsGO.AddComponent<HorizontalLayoutGroup>();
+        dotsHLG.childAlignment        = TextAnchor.MiddleCenter;
+        dotsHLG.spacing               = 8f;
+        dotsHLG.childForceExpandHeight = false;
+        dotsHLG.childForceExpandWidth = false;
+        dotsHLG.childControlHeight = false;
+        dotsHLG.childControlWidth     = false;
+        dotsGO.name = "Dots";
+
+        // ── Tombol PREV (kiri) ────────────────────────────────────
+        var prevGO = new GameObject("PrevButton");
+        prevGO.transform.SetParent(content.transform, false);
+        var prevRT = prevGO.AddComponent<RectTransform>();
+        prevRT.anchorMin = new Vector2(0f, 0.3f);
+        prevRT.anchorMax = new Vector2(0.15f, 0.8f);
+        prevRT.offsetMin = new Vector2(8f, 0f);
+        prevRT.offsetMax = new Vector2(-4f, 0f);
+        var prevImg = prevGO.AddComponent<Image>();
+        prevImg.color = new Color(0.15f, 0.15f, 0.15f, 1f);
+        var prevBtn = prevGO.AddComponent<Button>();
+        var prevCB  = prevBtn.colors;
+        prevCB.highlightedColor = new Color(0.25f, 0.25f, 0.25f, 1f);
+        prevCB.pressedColor     = C_GREEN_DARK;
+        prevBtn.colors = prevCB;
+        prevBtn.targetGraphic = prevImg;
+
+        // Icon panah kiri (◀)
+        var prevTxt = MakeText(prevGO.transform, "◀", 28, C_GREEN, TextAnchor.MiddleCenter, FontStyle.Bold);
+        var prevTxtRT = prevTxt.GetComponent<RectTransform>();
+        FillRect(prevTxtRT);
+        prevGO.name = "PrevButton";
+
+        // ── Tombol NEXT (kanan) ───────────────────────────────────
+        var nextGO = new GameObject("NextButton");
+        nextGO.transform.SetParent(content.transform, false);
+        var nextRT = nextGO.AddComponent<RectTransform>();
+        nextRT.anchorMin = new Vector2(0.85f, 0.3f);
+        nextRT.anchorMax = new Vector2(1f,    0.8f);
+        nextRT.offsetMin = new Vector2(4f, 0f);
+        nextRT.offsetMax = new Vector2(-8f, 0f);
+        var nextImg = nextGO.AddComponent<Image>();
+        nextImg.color = new Color(0.15f, 0.15f, 0.15f, 1f);
+        var nextBtn = nextGO.AddComponent<Button>();
+        var nextCB  = nextBtn.colors;
+        nextCB.highlightedColor = new Color(0.25f, 0.25f, 0.25f, 1f);
+        nextCB.pressedColor     = C_GREEN_DARK;
+        nextBtn.colors = nextCB;
+        nextBtn.targetGraphic = nextImg;
+
+        // Icon panah kanan (▶)
+        var nextTxt = MakeText(nextGO.transform, "▶", 28, C_GREEN, TextAnchor.MiddleCenter, FontStyle.Bold);
+        var nextTxtRT = nextTxt.GetComponent<RectTransform>();
+        FillRect(nextTxtRT);
+        nextGO.name = "NextButton";
+
+        // ── Tombol SELECT (bawah) ─────────────────────────────────
+        var selectGO = new GameObject("SelectButton");
+        selectGO.transform.SetParent(content.transform, false);
+        var selectRT = selectGO.AddComponent<RectTransform>();
+        selectRT.anchorMin = new Vector2(0.2f, 0.01f);
+        selectRT.anchorMax = new Vector2(0.8f, 0.07f);
+        selectRT.offsetMin = selectRT.offsetMax = Vector2.zero;
+        var selectImg = selectGO.AddComponent<Image>();
+        selectImg.color = C_GREEN;
+        var selectBtn = selectGO.AddComponent<Button>();
+        var selectCB  = selectBtn.colors;
+        selectCB.highlightedColor = new Color(0.35f, 0.8f, 0.37f, 1f);
+        selectCB.pressedColor     = C_GREEN_DARK;
+        selectBtn.colors = selectCB;
+        selectBtn.targetGraphic = selectImg;
+
+        var selectLbl = MakeText(selectGO.transform, "SELECT", 20, C_BG_DARK, TextAnchor.MiddleCenter, FontStyle.Bold);
+        FillRect(selectLbl.GetComponent<RectTransform>());
+        selectGO.name = "SelectButton";
+
+        // ── Dummy CSP untuk kompatibilitas WireScripts ────────────
+        var cspGO = new GameObject("CharacterSelectPanel");
+        cspGO.transform.SetParent(panel.transform, false);
+        cspGO.AddComponent<RectTransform>();
+        var csp = cspGO.AddComponent<CharacterSelectPanel>();
+        csp.enabled = false; // carousel ini tidak pakai logic CharacterSelectPanel
+
+        return panel;
+    }
+
     void BuildVisualizer(Transform parent)
     {
         var viz = new GameObject("Visualizer");
@@ -1025,7 +1239,8 @@ public class PhoneUIBuilder : MonoBehaviour
 
         // ── PhoneNavigator ────────────────────────────────────────
         _phoneNavigator = gameObject.GetComponent<PhoneNavigator>() ?? gameObject.AddComponent<PhoneNavigator>();
-        _phoneNavigator.homePanel = _homePanel;
+        _phoneNavigator.homePanel    = _homePanel;
+        _phoneNavigator.phoneManager = _phoneManager;  // FIX: assign phoneManager supaya GoBack bisa ClosePhone
 
         var backBtn = _phoneUI?.transform.Find("PhoneScreen/NavBar/BackButton")?.GetComponent<Button>();
         if (backBtn != null)
@@ -1146,7 +1361,124 @@ public class PhoneUIBuilder : MonoBehaviour
 
         _cameraMode.galleryManager = _galleryManager;
 
+        // ── CharacterSelectPanel sudah di-generate di BuildCharacterPanel ──
+        var csp = _characterPanel.GetComponentInChildren<CharacterSelectPanel>(true);
+        if (csp != null)
+        {
+            csp.gameObject.SetActive(true);
+            // Panggil BuildGrid via coroutine dari PhoneUIBuilder sendiri
+            // supaya tidak bergantung pada LateStart() yang butuh parent aktif
+            StartCoroutine(InitCharacterGrid(csp));
+            Debug.Log("[PhoneUIBuilder] CharacterSelectPanel siap.");
+        }
+        else
+        {
+            Debug.LogWarning("[PhoneUIBuilder] CharacterSelectPanel tidak ditemukan di _characterPanel!");
+        }
+
         Debug.Log("[PhoneUIBuilder] Semua script sudah di-wire!");
+    }
+
+    // ─────────────────────────────────────────────
+    //  INIT CHARACTER GRID
+    //  Tunggu CharacterSwitcher siap lalu panggil
+    //  BuildGrid() secara langsung tanpa bergantung
+    //  pada LateStart() di CharacterSelectPanel.
+    // ─────────────────────────────────────────────
+    IEnumerator InitCharacterGrid(CharacterSelectPanel csp)
+    {
+        // Tunggu sampai CharacterSwitcher siap
+        float waited = 0f;
+        while ((CharacterSwitcher.Instance == null || CharacterSwitcher.Instance.CharacterCount == 0)
+               && waited < 5f)
+        {
+            waited += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        if (CharacterSwitcher.Instance == null || CharacterSwitcher.Instance.CharacterCount == 0)
+        {
+            Debug.LogWarning("[PhoneUIBuilder] CharacterSwitcher tidak siap setelah 5 detik!");
+            yield break;
+        }
+
+        int   count     = CharacterSwitcher.Instance.CharacterCount;
+        int   current   = CharacterSwitcher.Instance.ActiveIndex;
+
+        // Cari referensi UI dari _characterPanel
+        var charImg  = FindInChildren<Image>(_characterPanel, "CharThumbnail");
+        var nameLabel= FindTMP(_characterPanel, "CharNameLabel");
+        var prevBtn  = FindInChildren<Button>(_characterPanel, "PrevButton");
+        var nextBtn  = FindInChildren<Button>(_characterPanel, "NextButton");
+        var selectBtn= FindInChildren<Button>(_characterPanel, "SelectButton");
+        var dotsGO   = FindChildTransform(_characterPanel, "Dots");
+
+        // Buat dot per karakter
+        var dots = new Image[count];
+        if (dotsGO != null)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var dotGO = new GameObject("Dot" + i);
+                dotGO.transform.SetParent(dotsGO, false);
+                var dRT = dotGO.AddComponent<RectTransform>();
+                dRT.sizeDelta = new Vector2(10f, 10f);
+                var le = dotGO.AddComponent<LayoutElement>();
+                le.preferredWidth  = 10f;
+                le.preferredHeight = 10f;
+                le.minWidth        = 10f;
+                le.minHeight       = 10f;
+                dots[i] = dotGO.AddComponent<Image>();
+                dots[i].color = C_GRAY_DARK;
+                MakeCircle(dots[i]);
+            }
+        }
+
+        // ── Fungsi refresh tampilan carousel ──────────────────────
+        void Refresh(int idx)
+        {
+            var data = CharacterSwitcher.Instance.GetCharacter(idx);
+            if (charImg  != null) charImg.sprite  = data.thumbnail;
+            if (nameLabel != null) nameLabel.text  = data.characterName;
+
+            // Update dots
+            for (int d = 0; d < dots.Length; d++)
+                if (dots[d] != null)
+                    dots[d].color = (d == idx) ? C_GREEN : C_GRAY_DARK;
+        }
+
+        // Tampilkan karakter aktif saat panel pertama dibuka
+        Refresh(current);
+
+        // ── Prev ──────────────────────────────────────────────────
+        if (prevBtn != null)
+            prevBtn.onClick.AddListener(() => {
+                current = (current - 1 + count) % count;
+                Refresh(current);
+            });
+
+        // ── Next ──────────────────────────────────────────────────
+        if (nextBtn != null)
+            nextBtn.onClick.AddListener(() => {
+                current = (current + 1) % count;
+                Refresh(current);
+            });
+
+        // ── Select — spawn karakter yang dipilih ──────────────────
+        if (selectBtn != null)
+            selectBtn.onClick.AddListener(() => {
+                CharacterSwitcher.Instance?.SwitchTo(current);
+                // Tutup HP setelah pilih
+                _phoneManager?.ClosePhone();
+            });
+
+        // Sync saat karakter diganti dari luar (misal lewat cara lain)
+        CharacterSwitcher.Instance.OnCharacterChanged += (newIdx) => {
+            current = newIdx;
+            Refresh(newIdx);
+        };
+
+        Debug.Log($"[PhoneUIBuilder] Carousel karakter siap: {count} karakter.");
     }
 
     // ═════════════════════════════════════════════════════════════

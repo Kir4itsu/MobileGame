@@ -47,6 +47,12 @@ public class CameraController : MonoBehaviour
     public Vector3 MovementRight =>
         (Quaternion.Euler(0, currentRotationY, 0) * Vector3.right).normalized;
 
+    /// <summary>
+    /// Yaw kamera saat ini (derajat). Dipakai MinimapSystem untuk rotate minimap
+    /// di mode TPP mengikuti arah kamera, bukan arah player.
+    /// </summary>
+    public float CameraYaw => currentRotationY;
+
     // ──────────────────────────────────────────────
     //  THIRD PERSON
     // ──────────────────────────────────────────────
@@ -141,6 +147,10 @@ public class CameraController : MonoBehaviour
     private Transform  _preDriveTarget  = null;
     private Transform  _vehicleTransform = null; // transform mobil (bukan cameraTarget)
 
+    // Anti-shake TPP: root transform (tidak di-animate) + smooth Y
+    private Transform _stableRoot  = null;  // naik ke parent paling atas dari target
+    private float     _smoothRootY = 0f;    // Y yang sudah di-lerp, tidak shake
+
     // ══════════════════════════════════════════════
     //  START
     // ══════════════════════════════════════════════
@@ -175,6 +185,19 @@ public class CameraController : MonoBehaviour
         currentRotationY = 0f;
         _targetDist      = GetDefaultDistForMode(cameraMode);
         _currentDist     = _targetDist;
+
+        // Cache root transform untuk anti-shake TPP
+        CacheStableRoot(target);
+    }
+
+    // Naik ke parent paling atas dari t — root tidak di-animate Animator
+    void CacheStableRoot(Transform t)
+    {
+        if (t == null) { _stableRoot = null; return; }
+        Transform root = t;
+        while (root.parent != null) root = root.parent;
+        _stableRoot  = root;
+        _smoothRootY = root.position.y;
     }
 
     float GetDefaultDistForMode(CameraMode mode)
@@ -273,8 +296,33 @@ public class CameraController : MonoBehaviour
         _targetDist  = GetDefaultDistForMode(cameraMode);
         _currentDist = _targetDist;
 
+        // Refresh stableRoot ke player baru
+        CacheStableRoot(target);
+
         Debug.Log($"🚶 Camera: Kembali ke {cameraMode}");
         FloatingJoystick.Instance?.SyncViewLabel();
+    }
+
+    // ══════════════════════════════════════════════
+    //  REFRESH CHARACTER SCALE (dipanggil CharacterSwitcher)
+    // ══════════════════════════════════════════════
+
+    /// <summary>
+    /// Panggil ini setelah CharacterSwitcher mengganti target karakter,
+    /// agar characterScale diperbarui dan posisi FPP/TPP/Shoulder menyesuaikan
+    /// tinggi karakter baru (FCT vs MCT).
+    /// </summary>
+    public void RefreshCharacterScale()
+    {
+        if (autoScaleWithCharacter && target != null)
+        {
+            characterScale = Mathf.Max(
+                target.localScale.x, target.localScale.y, target.localScale.z);
+            _targetDist  = GetDefaultDistForMode(cameraMode);
+            _currentDist = _targetDist;
+            CacheStableRoot(target);
+            Debug.Log($"[CameraController] RefreshCharacterScale → scale={characterScale}x, mode={cameraMode}");
+        }
     }
 
     // ══════════════════════════════════════════════
@@ -389,23 +437,30 @@ public class CameraController : MonoBehaviour
     {
         ReadInput(out float mx, out float my);
 
-        // Horizontal: auto-follow yaw mobil + input kamera manual
-        float vehicleYaw = _vehicleTransform != null
-            ? _vehicleTransform.eulerAngles.y
-            : currentRotationY;
-
-        // Lerp currentRotationY ke yaw mobil (auto-follow), lalu tambah input manual
-        currentRotationY = Mathf.LerpAngle(
-            currentRotationY, vehicleYaw, Time.deltaTime * vehicleFollowSpeed);
+        // ── Horizontal ───────────────────────────────────────────────────────
         currentRotationY += mx;
 
-        // Vertical: hanya input manual, clamp ke range kendaraan
+        if (vehicleFollowSpeed > 0f && Mathf.Abs(mx) < 0.01f && _vehicleTransform != null)
+        {
+            float vehicleYaw = _vehicleTransform.eulerAngles.y;
+            currentRotationY = Mathf.LerpAngle(
+                currentRotationY, vehicleYaw, Time.deltaTime * vehicleFollowSpeed);
+        }
+
+        // ── Vertical ─────────────────────────────────────────────────────────
         currentRotationX -= my;
         currentRotationX  = Mathf.Clamp(currentRotationX, vehicleMinPitch, vehicleMaxPitch);
 
-        Quaternion rot   = Quaternion.Euler(currentRotationX, currentRotationY, 0);
-        Vector3    pivot = target.position + Vector3.up * vehiclePivotHeight;
-        Vector3    camDir = rot * Vector3.back;
+        Quaternion rot = Quaternion.Euler(currentRotationX, currentRotationY, 0);
+
+        // Pivot = posisi CameraTarget (sudah diatur di Inspector mobil)
+        // vehiclePivotHeight hanya sebagai offset tambahan jika CameraTarget belum tepat
+        Vector3 pivot  = target.position + Vector3.up * vehiclePivotHeight;
+        Vector3 camDir = rot * Vector3.back;
+
+        // Smooth posisi pivot agar tidak goyang saat mobil di jalan bergelombang
+        _smoothRootY = Mathf.Lerp(_smoothRootY, pivot.y, Time.deltaTime * 15f);
+        pivot.y      = _smoothRootY;
 
         float safeDist = CalcSafeDistance(pivot, camDir, _currentDist);
 
@@ -422,11 +477,18 @@ public class CameraController : MonoBehaviour
         currentRotationY += mx;
         currentRotationX  = Mathf.Clamp(currentRotationX - my, -30f, 60f);
 
-        Quaternion rot      = Quaternion.Euler(currentRotationX, currentRotationY, 0);
-        float      scaledH  = targetHeightOffset * characterScale;
-        Vector3    pivot    = target.position + Vector3.up * scaledH;
-        Vector3    camDir   = rot * Vector3.back;
-        float      safeDist = CalcSafeDistance(pivot, camDir, _currentDist);
+        Quaternion rot     = Quaternion.Euler(currentRotationX, currentRotationY, 0);
+        float      scaledH = targetHeightOffset * characterScale;
+
+        // Anti-shake: gunakan posisi XZ dari root (tidak di-animate),
+        // Y di-smooth agar naik tangga/lereng tetap terfollow tapi bobbing animasi hilang.
+        Transform posSource = (_stableRoot != null) ? _stableRoot : target;
+        _smoothRootY = Mathf.Lerp(_smoothRootY, posSource.position.y, Time.deltaTime * 12f);
+        Vector3 basePos = new Vector3(posSource.position.x, _smoothRootY, posSource.position.z);
+
+        Vector3 pivot    = basePos + Vector3.up * scaledH;
+        Vector3 camDir   = rot * Vector3.back;
+        float   safeDist = CalcSafeDistance(pivot, camDir, _currentDist);
 
         float closeT    = Mathf.Clamp01(1f - (safeDist - minCamDistance)
                           / Mathf.Max(closePivotDistance - minCamDistance, 0.01f));
