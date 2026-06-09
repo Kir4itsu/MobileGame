@@ -20,6 +20,10 @@ public class FloatingJoystick : MonoBehaviour
 
     // ── Enum mode input ───────────────────────────
     private enum InputMode { NativeTouch, WebGLMouse, PCKeyboard }
+    private float _lastJumpTapTime  = -1f;
+    private float _doubleTapWindow  = 0.35f;  // bisa di-expose ke [Header] kalau mau
+    public bool DoubleTapJumpPressed { get; private set; }
+    private int _doubleTapFrame = -1;
     private InputMode _inputMode;
 
     [Header("Joystick Settings")]
@@ -41,6 +45,37 @@ public class FloatingJoystick : MonoBehaviour
     public float CameraX         { get; private set; }
     public float CameraY         { get; private set; }
     public bool  SprintHeld      { get; private set; }
+    /// <summary>Jump — true hanya pada frame saat tombol JUMP ditekan.</summary>
+    public bool  JumpPressed     { get; private set; }
+    private int  _jumpFrame      = -1;
+
+    /// <summary>
+    /// Konsumsi JumpPressed — setelah dipanggil, JumpPressed jadi false
+    /// sampai tap berikutnya. Pakai ini di PlayerMovement dan WallHangController
+    /// agar hanya satu script yang memproses tap jump per frame.
+    /// </summary>
+    public bool ConsumeJump()
+    {
+        if (JumpPressed && _jumpFrame == Time.frameCount)
+        {
+            JumpPressed = false;
+            _jumpFrame  = -1;
+            return true;
+        }
+        return false;
+    }
+
+    public bool ConsumeDoubleTapJump()
+    {
+        if (DoubleTapJumpPressed && _doubleTapFrame == Time.frameCount)
+        {
+            DoubleTapJumpPressed = false;
+            _doubleTapFrame = -1;
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>Gas pedal — true selama tombol GAS ditekan (vehicle mode).</summary>
     public bool  GasHeld         { get; private set; }
     /// <summary>Rem / mundur — true selama tombol REM ditekan (vehicle mode).</summary>
@@ -113,6 +148,7 @@ public class FloatingJoystick : MonoBehaviour
     private RectTransform _rtPhone;          // ← PHONE button
     private RectTransform _rtGas;            // ← GAS pedal (vehicle mode)
     private RectTransform _rtBrake;          // ← BRAKE / mundur (vehicle mode)
+    private RectTransform _rtJump;           // ← JUMP button
 
     // ── Ukuran tombol (min/max) ───────────────────
     private const float MIN_BTN_SIZE = 60f;
@@ -121,15 +157,17 @@ public class FloatingJoystick : MonoBehaviour
     // ── Default positions & sizes ─────────────────
     private readonly Vector2 _defJoystick   = new Vector2( 100f,  100f);
     private readonly Vector2 _defSprint     = new Vector2(-200f,  110f);
-    private readonly Vector2 _defInteract   = new Vector2(-200f,  250f);
-    private readonly Vector2 _defViewToggle = new Vector2(-200f,  390f);
-    private readonly Vector2 _defPhone      = new Vector2(-200f,  530f); // ← default Phone: di atas TPP
+    private readonly Vector2 _defInteract   = new Vector2(-200f,  390f);
+    private readonly Vector2 _defViewToggle = new Vector2(-200f,  530f);
+    private readonly Vector2 _defPhone      = new Vector2(-200f,  670f); // ← naik
 
     private const float DEF_JOYSTICK_SIZE    = 180f;
     private const float DEF_SPRINT_SIZE      = 120f;
     private const float DEF_INTERACT_SIZE    = 110f;
     private const float DEF_VIEW_TOGGLE_SIZE = 100f;
     private const float DEF_PHONE_SIZE       = 100f;
+    private readonly Vector2 _defJump        = new Vector2(-200f, 250f);
+    private const float DEF_JUMP_SIZE        = 110f;
 
     // ─────────────────────────────────────────────
     void Awake()
@@ -162,6 +200,13 @@ public class FloatingJoystick : MonoBehaviour
         {
             InteractPressed = false;
             _interactFrame  = -1;
+        }
+
+        // Reset JumpPressed setelah 1 frame
+        if (JumpPressed && _jumpFrame != Time.frameCount)
+        {
+            JumpPressed = false;
+            _jumpFrame  = -1;
         }
 
         // ── PC: PageUp = Toggle HP ──────────────────────────────────
@@ -757,6 +802,27 @@ public class FloatingJoystick : MonoBehaviour
             onUp: () => { });
         BuildPhoneIcon(_rtPhone);
 
+        // ── Tombol JUMP ──
+        _rtJump = BuildGTAButton(canvasGO.transform, "JumpButton",
+            _defJump, new Vector2(1f, 0f), DEF_JUMP_SIZE,
+            onDown: () => {
+                float now = Time.time;
+                if (now - _lastJumpTapTime <= _doubleTapWindow)
+                {
+                    DoubleTapJumpPressed = true;
+                    _doubleTapFrame = Time.frameCount;
+                    _lastJumpTapTime = -1f; // reset setelah double tap
+                }
+                else
+                {
+                    _lastJumpTapTime = now;
+                }
+                JumpPressed = true;
+                _jumpFrame = Time.frameCount;
+            },
+            onUp:   () => { JumpPressed = false; _jumpFrame = -1; });
+        BuildJumpIcon(_rtJump);
+
         // ── Tombol GAS (vehicle mode) — kanan bawah ──
         _rtGas = BuildGTAButton(canvasGO.transform, "GasButton",
             new Vector2(-120f, 110f), new Vector2(1f, 0f), 130f,
@@ -1000,6 +1066,7 @@ public class FloatingJoystick : MonoBehaviour
         LoadRT("phn",  _rtPhone,      _defPhone,      DEF_PHONE_SIZE);
         LoadRT("gas",  _rtGas,        new Vector2(-120f, 110f), 130f);
         LoadRT("brk",  _rtBrake,      new Vector2(-270f, 110f), 130f);
+        LoadRT("jmp",  _rtJump,       _defJump,              DEF_JUMP_SIZE);
     }
 
     void LoadRT(string key, RectTransform rt, Vector2 defaultPos, float defaultSize)
@@ -1017,7 +1084,7 @@ public class FloatingJoystick : MonoBehaviour
 
     public void ResetLayout()
     {
-        foreach (var k in new[] { "joy", "spr", "int", "view", "phn", "gas", "brk" })
+        foreach (var k in new[] { "joy", "spr", "int", "view", "phn", "gas", "brk", "jmp" })
         {
             PlayerPrefs.DeleteKey(k + "_x");
             PlayerPrefs.DeleteKey(k + "_y");
@@ -1032,6 +1099,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtPhone       != null) { _rtPhone.anchoredPosition       = _defPhone;      ApplyResize(_rtPhone,      DEF_PHONE_SIZE); }
         if (_rtGas         != null) { _rtGas.anchoredPosition         = new Vector2(-120f, 110f); ApplyResize(_rtGas,   130f); }
         if (_rtBrake       != null) { _rtBrake.anchoredPosition       = new Vector2(-270f, 110f); ApplyResize(_rtBrake, 130f); }
+        if (_rtJump        != null) { _rtJump.anchoredPosition        = _defJump;      ApplyResize(_rtJump,      DEF_JUMP_SIZE); }
         Debug.Log("[FloatingJoystick] Layout direset!");
     }
 
@@ -1059,6 +1127,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtInteract   != null) _rtInteract.gameObject.SetActive(false);
         if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(false);
         if (_rtPhone      != null) _rtPhone.gameObject.SetActive(false);
+        if (_rtJump       != null) _rtJump.gameObject.SetActive(false);
     }
 
     /// <summary>
@@ -1072,6 +1141,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtInteract   != null) _rtInteract.gameObject.SetActive(false);
         if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(false);
         if (_rtPhone      != null) _rtPhone.gameObject.SetActive(false);
+        if (_rtJump       != null) _rtJump.gameObject.SetActive(false);
     }
 
     /// <summary>
@@ -1084,6 +1154,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtInteract   != null) _rtInteract.gameObject.SetActive(true);
         if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(true);
         if (_rtPhone      != null) _rtPhone.gameObject.SetActive(true);
+        if (_rtJump       != null) _rtJump.gameObject.SetActive(true);
     }
 
     /// <summary>
@@ -1096,6 +1167,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtInteract   != null) _rtInteract.gameObject.SetActive(false);
         if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(false);
         if (_rtPhone      != null) _rtPhone.gameObject.SetActive(false);
+        if (_rtJump       != null) _rtJump.gameObject.SetActive(false);
         // Gas/Rem juga disembunyikan saat wheel terbuka
         if (_rtGas        != null) _rtGas.gameObject.SetActive(false);
         if (_rtBrake      != null) _rtBrake.gameObject.SetActive(false);
@@ -1112,6 +1184,7 @@ public class FloatingJoystick : MonoBehaviour
             if (_rtSprint     != null) _rtSprint.gameObject.SetActive(true);
             if (_rtViewToggle != null) _rtViewToggle.gameObject.SetActive(true);
             if (_rtPhone      != null) _rtPhone.gameObject.SetActive(true);
+            if (_rtJump       != null) _rtJump.gameObject.SetActive(true);
         }
         // Tombol INTERACT/KELUAR selalu muncul kembali (untuk keluar kendaraan)
         if (_rtInteract != null) _rtInteract.gameObject.SetActive(true);
@@ -1346,6 +1419,44 @@ public class FloatingJoystick : MonoBehaviour
         }
     }
 
+
+    void BuildJumpIcon(RectTransform btn)
+    {
+        float s  = btn.sizeDelta.x;
+        Transform p = btn.transform;
+        float lw = s * 0.07f;
+        float cx = 0f;
+        float cy = -s * 0.01f;
+
+        // Kepala
+        IconCircle(p, "Head", cx, cy + s*0.19f, s*0.10f, C_ICON);
+
+        // Badan lurus
+        IconRect(p, "Torso", cx, cy + s*0.055f, lw, s*0.16f, C_ICON, true);
+
+        // Lengan kiri — terentang ke atas kiri
+        var aL = IconRect(p, "ArmL", cx - s*0.11f, cy + s*0.105f, lw*0.85f, s*0.145f, C_ICON, true);
+        aL.localRotation = Quaternion.Euler(0, 0, 55f);
+
+        // Lengan kanan — terentang ke atas kanan
+        var aR = IconRect(p, "ArmR", cx + s*0.11f, cy + s*0.105f, lw*0.85f, s*0.145f, C_ICON, true);
+        aR.localRotation = Quaternion.Euler(0, 0, -55f);
+
+        // Kaki kiri — terlipat ke bawah kiri
+        var lL = IconRect(p, "LegL", cx - s*0.075f, cy - s*0.115f, lw, s*0.175f, C_ICON, true);
+        lL.localRotation = Quaternion.Euler(0, 0, 20f);
+
+        // Kaki kanan — terlipat ke bawah kanan
+        var lR = IconRect(p, "LegR", cx + s*0.075f, cy - s*0.115f, lw, s*0.175f, C_ICON, true);
+        lR.localRotation = Quaternion.Euler(0, 0, -20f);
+
+        // Panah ke atas (tanda lompat)
+        IconRect(p, "ArrowBody", cx, cy + s*0.36f, lw*0.7f, s*0.10f, C_ICON, true);
+        var arL = IconRect(p, "ArrowL", cx - s*0.045f, cy + s*0.435f, lw*0.7f, s*0.07f, C_ICON, true);
+        arL.localRotation = Quaternion.Euler(0, 0, 35f);
+        var arR = IconRect(p, "ArrowR", cx + s*0.045f, cy + s*0.435f, lw*0.7f, s*0.07f, C_ICON, true);
+        arR.localRotation = Quaternion.Euler(0, 0, -35f);
+    }
     // Sprite rounded (untuk rect icon parts)
     Sprite CreateRoundedSprite(int res, float cornerRatio)
     {
@@ -1402,6 +1513,7 @@ public class FloatingJoystick : MonoBehaviour
         if (_rtSprint      != null) _rtSprint.gameObject.SetActive(!inVehicle);
         if (_rtViewToggle  != null) _rtViewToggle.gameObject.SetActive(!inVehicle);
         if (_rtPhone       != null) _rtPhone.gameObject.SetActive(!inVehicle);
+        if (_rtJump       != null) _rtJump.gameObject.SetActive(!inVehicle);
 
         // Tampilkan / sembunyikan tombol pedal kendaraan
         if (_rtGas   != null) _rtGas.gameObject.SetActive(inVehicle);

@@ -5128,6 +5128,9 @@ PrefabInstance:
       addedObject: {fileID: 4173286387051053570}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0c713d54f1cdf4a49a86b9e93f236eef, type: 3}
       insertIndex: -1
+      addedObject: {fileID: 1988109741170050402}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0c713d54f1cdf4a49a86b9e93f236eef, type: 3}
+      insertIndex: -1
       addedObject: {fileID: 2061233505952455326}
   m_SourcePrefab: {fileID: 100100000, guid: 0c713d54f1cdf4a49a86b9e93f236eef, type: 3}
 --- !u!95 &1850967203043609941 stripped
@@ -5156,14 +5159,14 @@ MonoBehaviour:
   runSpeed: 6
   rotationSpeed: 10
   gravity: -30
-  groundCheckDistance: 0.8
+  groundCheckDistance: 0.05
   groundLayer:
     serializedVersion: 2
     m_Bits: 4294967295
-  jumpForce: 20
-  jumpDelay: 0.2
-  fallMultiplier: 5
-  jumpCooldown: 0.5
+  jumpForce: 16
+  jumpDelay: 0.05
+  fallMultiplier: 2.5
+  jumpCooldown: 0.2
   jumpButton: {fileID: 0}
   doorPushDistance: 1.2
   doorLayer:
@@ -5172,6 +5175,47 @@ MonoBehaviour:
   cameraTransform: {fileID: 0}
   animator: {fileID: 1850967203043609941}
   sprintButton: {fileID: 0}
+--- !u!114 &1988109741170050402
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4901051800785620373}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c51ce34d106072643bcc8b19e3f16f05, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WallHangController
+  detectDistance: 1
+  detectHeightRatio: 0.75
+  topClearanceCheckHeight: 0.3
+  clearanceBoxSize: {x: 0.4, y: 0.2, z: 0.4}
+  snapSpeed: 8
+  hangDepthOffset: 0.15
+  doubleTapWindow: 0.35
+  hangOffsetYOverride: 0
+  hangSlideSpeed: 1.5
+  climbUpDuration: 0.8
+  climbUpHeightAdd: 1.8
+  wallJumpBackSpeed: 5
+  wallJumpUpSpeed: 4
+  wallJumpHangDelay: 0.1
+  shimmyThreshold: 0.1
+  postClimbDelay: 0.6
+  postDropDelay: 0.8
+  noHangCooldown: 0.8
+  dropGravityMultiplier: 4
+  paramIdleToBracedHang: IdleToBracedHang
+  paramJumpingToHang: JumpingToHang
+  paramHangIdle: HangIdle
+  paramClimbUp: ClimbUp
+  paramDropFromHang: DropFromHang
+  paramShimmyLeft: ShimmyLeft
+  paramShimmyRight: ShimmyRight
+  paramJumpFromWall: JumpFromWall
+  animator: {fileID: 1850967203043609941}
+  showDebugLog: 1
 --- !u!143 &2061233505952455326
 CharacterController:
   m_ObjectHideFlags: 0
@@ -5193,7 +5237,7 @@ CharacterController:
   m_Height: 1.2
   m_Radius: 0.3
   m_SlopeLimit: 45
-  m_StepOffset: 0.3
+  m_StepOffset: 0.1
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0.61, z: 0.02}

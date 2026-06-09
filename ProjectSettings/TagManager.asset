@@ -8,7 +8,7 @@ TagManager:
   - NPC
   - Vehicle
   - CarPatrol
-  - Kantin
+  - Wall
   layers:
   - Default
   - TransparentFX

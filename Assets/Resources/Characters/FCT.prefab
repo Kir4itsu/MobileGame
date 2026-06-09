@@ -231,7 +231,7 @@ PrefabInstance:
     - target: {fileID: 5866666021909216657, guid: 592a69745b2e0944eb82c7343fd905d4, type: 3}
       propertyPath: m_Controller
       value: 
-      objectReference: {fileID: 9100000, guid: 49d74644b8a5e564aaf85ebde50fcc58, type: 2}
+      objectReference: {fileID: 9100000, guid: bc8f7393af960d94da7fb15e9ba03e9c, type: 2}
     - target: {fileID: 7363479242261063072, guid: 592a69745b2e0944eb82c7343fd905d4, type: 3}
       propertyPath: m_Layer
       value: 9
@@ -255,6 +255,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 592a69745b2e0944eb82c7343fd905d4, type: 3}
       insertIndex: -1
       addedObject: {fileID: 9195680710270764310}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 592a69745b2e0944eb82c7343fd905d4, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -3409359234815843530}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 592a69745b2e0944eb82c7343fd905d4, type: 3}
       insertIndex: -1
       addedObject: {fileID: 3379175836722982619}
@@ -281,18 +284,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 49dd8059e4ffa3b45a4f370a507c22f9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
-  walkSpeed: 3
-  runSpeed: 6
+  walkSpeed: 4
+  runSpeed: 10
   rotationSpeed: 10
   gravity: -30
-  groundCheckDistance: 0.8
+  groundCheckDistance: 0.18
   groundLayer:
     serializedVersion: 2
     m_Bits: 4294967295
   jumpForce: 16
-  jumpDelay: 0.2
+  jumpDelay: 0.05
   fallMultiplier: 5
-  jumpCooldown: 0.5
+  jumpCooldown: 0.2
   jumpButton: {fileID: 0}
   doorPushDistance: 1.2
   doorLayer:
@@ -301,6 +304,47 @@ MonoBehaviour:
   cameraTransform: {fileID: 0}
   animator: {fileID: 4518017042062889321}
   sprintButton: {fileID: 0}
+--- !u!114 &-3409359234815843530
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7140673778335109545}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c51ce34d106072643bcc8b19e3f16f05, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WallHangController
+  detectDistance: 1
+  detectHeightRatio: 0.75
+  topClearanceCheckHeight: 0.3
+  clearanceBoxSize: {x: 0.4, y: 0.2, z: 0.4}
+  snapSpeed: 8
+  hangDepthOffset: 0.15
+  doubleTapWindow: 0.35
+  hangOffsetYOverride: 0
+  hangSlideSpeed: 1.5
+  climbUpDuration: 0.8
+  climbUpHeightAdd: 1.8
+  wallJumpBackSpeed: 5
+  wallJumpUpSpeed: 4
+  wallJumpHangDelay: 0.3
+  shimmyThreshold: 0.1
+  postClimbDelay: 0.6
+  postDropDelay: 0.8
+  noHangCooldown: 0.8
+  dropGravityMultiplier: 4
+  paramIdleToBracedHang: IdleToBracedHang
+  paramJumpingToHang: JumpingToHang
+  paramHangIdle: IsHanging
+  paramClimbUp: ClimbUp
+  paramDropFromHang: DropFromHang
+  paramShimmyLeft: ShimmyLeft
+  paramShimmyRight: ShimmyRight
+  paramJumpFromWall: JumpFromWall
+  animator: {fileID: 4518017042062889321}
+  showDebugLog: 1
 --- !u!143 &3379175836722982619
 CharacterController:
   m_ObjectHideFlags: 0

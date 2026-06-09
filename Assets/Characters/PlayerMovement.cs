@@ -32,6 +32,7 @@ public class PlayerMovement : MonoBehaviour
     private CharacterController controller;
     private CameraController cameraController;
     private float verticalVelocity = 0f;
+    public float VerticalVelocity => verticalVelocity; // expose untuk WallHangController
     private bool isGrounded;
     private bool wasPreviouslyGrounded = true;
     private bool isMobileSprinting = false;
@@ -180,6 +181,12 @@ public class PlayerMovement : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Space))
             TryJump();
 
+        // Tombol JUMP di Android/mobile — pakai ConsumeJump() agar hanya
+        // PlayerMovement ATAU WallHangController yang memproses per frame,
+        // tidak keduanya sekaligus
+        if (FloatingJoystick.Instance != null && FloatingJoystick.Instance.ConsumeJump())
+            TryJump();
+
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");
 
@@ -267,6 +274,10 @@ public class PlayerMovement : MonoBehaviour
         if (isGrounded && !wasPreviouslyGrounded && !_jumpPending && !_inLandingCooldown)
             StartCoroutine(LandingCooldown());
 
+        // Safety reset: stuck _canJump=false di tanah tanpa cooldown aktif
+        if (isGrounded && !_jumpPending && !_inLandingCooldown && !_canJump)
+            _canJump = true;
+
         wasPreviouslyGrounded = isGrounded;
 
         if (isGrounded && verticalVelocity < 0f && !_jumpPending)
@@ -335,6 +346,17 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
+    void OnEnable()
+    {
+        // Dipanggil saat WallHangController me-re-enable script ini setelah hang.
+        // Reset wasPreviouslyGrounded agar tidak trigger LandingCooldown spurious.
+        wasPreviouslyGrounded = true;
+        // Batalkan LandingCooldown yang mungkin masih berjalan
+        StopCoroutine("LandingCooldown");
+        _inLandingCooldown = false;
+        _canJump = true;
+    }
+
     void OnControllerColliderHit(ControllerColliderHit hit) { }
 
     public void SetFirstPersonVisibility(bool visible)
@@ -351,8 +373,10 @@ public class PlayerMovement : MonoBehaviour
         yield return new WaitForSeconds(jumpDelay);
 
         verticalVelocity = jumpForce;
-
-        _jumpPending = false;
+        _jumpPending     = false;
+        // Safety: _canJump kembali true setelah jump execute
+        // LandingCooldown() akan set false lagi saat mendarat
+        _canJump = true;
     }
 
     void OnGUI()
